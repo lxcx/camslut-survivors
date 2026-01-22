@@ -64,6 +64,7 @@
                 <h2>Game Over!</h2>
                 <p>You survived for <span id="finalTime">0</span> seconds</p>
                 <p>Reached Level <span id="finalLevel">1</span></p>
+                <p>Score: <span id="finalScore">0</span></p>
                 <div class="game-over-buttons">
                     <button id="retryButton" class="menu-button">Retry</button>
                     <button id="mainMenuButton" class="menu-button">Return to Main Menu</button>
@@ -82,8 +83,10 @@
                 <p>You defeated the boss!</p>
                 <p>Survived for <span id="winTime">0</span> seconds</p>
                 <p>Reached Level <span id="winLevel">1</span></p>
+                <p>Score: <span id="winScore">0</span></p>
                 <div class="game-over-buttons">
                     <button id="winMainMenuButton" class="menu-button">Return to Main Menu</button>
+                    <button id="hardModeButton" class="menu-button" style="display: none; background: #8b0000; border-color: #ff0000;">Hard Mode</button>
                 </div>
                 <p id="winHint" style="margin-top: 20px; font-size: 11px; color: #888; font-style: italic;"></p>
             </div>
@@ -107,6 +110,12 @@
         <!-- Start Menu -->
         <div class="start-screen" id="startScreen">
             <div class="start-content">
+                <!-- Highest Score Display (top right) -->
+                <div style="position: absolute; top: 20px; right: 20px; color: #ffd700; font-size: 14px; font-weight: 600;">
+                    <div style="color: #aaa; font-size: 12px; margin-bottom: 4px;">Highest Score</div>
+                    <div id="highestScoreDisplay">0</div>
+                </div>
+                
                 <!-- Logo -->
                 <div class="game-logo" id="gameLogo">
                     <img id="logoImage" src="" alt="Game Logo" style="display: none;">

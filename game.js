@@ -44,12 +44,16 @@ const gameState = {
     bossSpawned: false, // Track if boss has been spawned
     rerolls: 0, // Rerolls available (3 base + 0.05 per permanent level)
     tabHiddenTime: null, // Track when tab was hidden (for pausing timer)
-    totalPausedTime: 0 // Total time the tab was hidden (in milliseconds)
+    totalPausedTime: 0, // Total time the tab was hidden (in milliseconds)
+    hardMode: false, // Hard mode flag (doubles enemy stats, halves permanent bonuses)
+    score: 0 // Current game score
 };
 
 // Permanent Stats Manager (persists after death)
 const PermanentStats = {
     totalLevelsGained: 0, // Total levels gained across all sessions
+    hasWon: false, // Track if player has won before (unlocks hard mode)
+    highestScore: 0, // Highest score achieved
     
     // Load from localStorage
     load() {
@@ -58,13 +62,17 @@ const PermanentStats = {
             if (saved) {
                 const data = JSON.parse(saved);
                 this.totalLevelsGained = data.totalLevelsGained || 0;
-                console.log(`Loaded permanent stats: ${this.totalLevelsGained} total levels gained`);
+                this.hasWon = data.hasWon || false;
+                this.highestScore = data.highestScore || 0;
+                console.log(`Loaded permanent stats: ${this.totalLevelsGained} total levels gained, hasWon: ${this.hasWon}, highestScore: ${this.highestScore}`);
             } else {
                 console.log('No saved permanent stats found, starting fresh');
             }
         } catch (e) {
             console.error('Error loading permanent stats from localStorage:', e);
             this.totalLevelsGained = 0; // Reset on error
+            this.hasWon = false;
+            this.highestScore = 0;
         }
     },
     
@@ -72,20 +80,32 @@ const PermanentStats = {
     save() {
         try {
             localStorage.setItem('permanentStats', JSON.stringify({
-                totalLevelsGained: this.totalLevelsGained
+                totalLevelsGained: this.totalLevelsGained,
+                hasWon: this.hasWon,
+                highestScore: this.highestScore
             }));
-            console.log(`Saved permanent stats: ${this.totalLevelsGained} total levels gained`);
+            console.log(`Saved permanent stats: ${this.totalLevelsGained} total levels gained, hasWon: ${this.hasWon}, highestScore: ${this.highestScore}`);
         } catch (e) {
             console.error('Error saving permanent stats to localStorage:', e);
             // Try to use sessionStorage as fallback
             try {
                 sessionStorage.setItem('permanentStats', JSON.stringify({
-                    totalLevelsGained: this.totalLevelsGained
+                    totalLevelsGained: this.totalLevelsGained,
+                    hasWon: this.hasWon,
+                    highestScore: this.highestScore
                 }));
                 console.warn('Saved to sessionStorage as fallback (will be lost when browser closes)');
             } catch (e2) {
                 console.error('Failed to save to both localStorage and sessionStorage:', e2);
             }
+        }
+    },
+    
+    // Update highest score if current score is higher
+    updateHighestScore(score) {
+        if (score > this.highestScore) {
+            this.highestScore = score;
+            this.save();
         }
     },
     
@@ -95,9 +115,15 @@ const PermanentStats = {
         this.save();
     },
     
-    // Get permanent bonuses
+    // Mark that player has won
+    markWon() {
+        this.hasWon = true;
+        this.save();
+    },
+    
+    // Get permanent bonuses (halved in hard mode)
     getBonuses() {
-        return {
+        const baseBonuses = {
             xpGain: 1 + (this.totalLevelsGained * 0.02), // +2% per level (doubled)
             damage: 1 + (this.totalLevelsGained * 0.005), // +0.5% per level
             hp: 1 + (this.totalLevelsGained * 0.01), // +1% per level
@@ -105,6 +131,20 @@ const PermanentStats = {
             attackSize: 1 + (this.totalLevelsGained * 0.005), // +0.5% per level
             speed: 1 + (this.totalLevelsGained * 0.001) // +0.1% per level
         };
+        
+        // Halve bonuses in hard mode
+        if (gameState.hardMode) {
+            return {
+                xpGain: 1 + (baseBonuses.xpGain - 1) * 0.5, // Halve the bonus portion
+                damage: 1 + (baseBonuses.damage - 1) * 0.5,
+                hp: 1 + (baseBonuses.hp - 1) * 0.5,
+                cooldown: 1 - (1 - baseBonuses.cooldown) * 0.5, // Halve the reduction
+                attackSize: 1 + (baseBonuses.attackSize - 1) * 0.5,
+                speed: 1 + (baseBonuses.speed - 1) * 0.5
+            };
+        }
+        
+        return baseBonuses;
     }
 };
 
@@ -266,13 +306,13 @@ const MusicManager = {
         
         // Game over song
         this.tracks.gameOver = new Audio('music/gameover.mp3');
-        this.tracks.gameOver.loop = false;
+        this.tracks.gameOver.loop = true;
         this.tracks.gameOver.volume = this.volume;
         this.tracks.gameOver.preload = 'auto';
         
         // Win song
         this.tracks.win = new Audio('music/win.mp3');
-        this.tracks.win.loop = false;
+        this.tracks.win.loop = true;
         this.tracks.win.volume = this.volume;
         this.tracks.win.preload = 'auto';
         
@@ -519,6 +559,16 @@ function playerWins() {
     
     CONFIG.isGameOver = true;
     
+    // Add boss kill bonus: 1000 base points, doubled in hard mode
+    const bossBonus = 1000 * (gameState.hardMode ? 2 : 1);
+    gameState.score += bossBonus;
+    
+    // Update highest score
+    PermanentStats.updateHighestScore(gameState.score);
+    
+    // Mark that player has won (unlocks hard mode)
+    PermanentStats.markWon();
+    
     // Calculate levels gained for permanent stats
     const levelsGained = gameState.level - gameState.startLevel;
     if (levelsGained > 0) {
@@ -530,8 +580,15 @@ function playerWins() {
     // Update win screen stats
     document.getElementById('winTime').textContent = CONFIG.gameTime;
     document.getElementById('winLevel').textContent = gameState.level;
+    document.getElementById('winScore').textContent = gameState.score.toLocaleString();
     // Clear hint text for win modal (no hints on victory!)
     document.getElementById('winHint').textContent = '';
+    
+    // Show/hide hard mode button based on whether player has won before
+    const hardModeButton = document.getElementById('hardModeButton');
+    if (hardModeButton) {
+        hardModeButton.style.display = PermanentStats.hasWon ? 'block' : 'none';
+    }
     
     // Show win modal
     document.getElementById('winModal').classList.add('active');
@@ -1571,15 +1628,18 @@ class Enemy {
         this.type = type;
         
         // First check for super elite (1 in 50 = 2% base, +3% per cock ring level)
-        const baseSuperEliteChance = 0.02; // 2% base chance (1 in 50)
-        const superEliteCockRingBonus = gameState.cockRingLevel * 0.03; // +3% per level
+        // Double spawn rates in hard mode
+        const hardModeMultiplier = gameState.hardMode ? 2 : 1;
+        const baseSuperEliteChance = 0.02 * hardModeMultiplier; // 2% base chance (1 in 50), doubled in hard mode
+        const superEliteCockRingBonus = gameState.cockRingLevel * 0.03 * hardModeMultiplier; // +3% per level, doubled in hard mode
         const superEliteChance = Math.min(1.0, baseSuperEliteChance + superEliteCockRingBonus); // Cap at 100%
         this.isSuperElite = Math.random() < superEliteChance;
         
         // If not super elite, check for regular elite (5% base, +10% per cock ring level)
+        // Double spawn rates in hard mode
         if (!this.isSuperElite) {
-            const baseEliteChance = 0.05; // 5% base chance (1 in 20)
-            const cockRingBonus = gameState.cockRingLevel * 0.10; // +10% per level
+            const baseEliteChance = 0.05 * hardModeMultiplier; // 5% base chance (1 in 20), doubled in hard mode
+            const cockRingBonus = gameState.cockRingLevel * 0.10 * hardModeMultiplier; // +10% per level, doubled in hard mode
             const eliteChance = Math.min(1.0, baseEliteChance + cockRingBonus); // Cap at 100%
             this.isElite = Math.random() < eliteChance;
         } else {
@@ -1688,6 +1748,23 @@ class Enemy {
             const hpMultiplier = 1 + (gameState.cockRingLevel * 0.2);
             this.health = Math.floor(this.health * hpMultiplier);
             this.maxHealth = Math.floor(this.maxHealth * hpMultiplier);
+        }
+        
+        // Double all enemy stats in hard mode (after all other calculations)
+        if (gameState.hardMode) {
+            this.radius *= 2;
+            this.baseSpeed *= 2;
+            this.speed = this.baseSpeed;
+            this.health *= 2;
+            this.maxHealth *= 2;
+            this.xpValue *= 2;
+            this.damage *= 2;
+            if (this.shootCooldown) {
+                this.shootCooldown /= 2; // Half cooldown = faster attacks
+            }
+            if (this.maxChargeDistance) {
+                this.maxChargeDistance *= 2;
+            }
         }
         
         this.slowMultiplier = 1.0; // Speed multiplier from slow effects
@@ -3528,6 +3605,9 @@ function spawnEnemy() {
 }
 
 function spawnExperienceOrb(x, y, value) {
+    // Track base XP value for scoring (before modifiers)
+    const baseValue = value;
+    
     // Apply Cock Ring XP increase (5% per level) and round down
     if (gameState.cockRingLevel > 0) {
         const xpMultiplier = 1 + (gameState.cockRingLevel * 0.05);
@@ -3536,6 +3616,12 @@ function spawnExperienceOrb(x, y, value) {
     // Apply permanent XP gain bonus (+1% per level gained)
     const bonuses = PermanentStats.getBonuses();
     value = Math.floor(value * bonuses.xpGain);
+    
+    // Add score: 1 point per base XP (before modifiers)
+    // Hard mode doubles points
+    const scorePoints = baseValue * (gameState.hardMode ? 2 : 1);
+    gameState.score += scorePoints;
+    
     gameState.experienceOrbs.push(new ExperienceOrb(x, y, value));
 }
 
@@ -4381,8 +4467,13 @@ function getRandomHint() {
 
 function gameOver() {
     CONFIG.isGameOver = true;
+    
+    // Update highest score
+    PermanentStats.updateHighestScore(gameState.score);
+    
     document.getElementById('finalTime').textContent = CONFIG.gameTime;
     document.getElementById('finalLevel').textContent = gameState.level;
+    document.getElementById('finalScore').textContent = gameState.score.toLocaleString();
     document.getElementById('gameOverHint').textContent = getRandomHint();
     document.getElementById('gameOverModal').classList.add('active');
     MusicManager.playGameOver();
@@ -4397,7 +4488,8 @@ function gameOver() {
 }
 
 function restartGame() {
-    // Reset game state
+    // Reset game state (but preserve hard mode)
+    const wasHardMode = gameState.hardMode;
     gameState.player = new Player(CONFIG.width / 2, CONFIG.height / 2);
     gameState.enemies = [];
     gameState.projectiles = [];
@@ -4422,6 +4514,8 @@ function restartGame() {
     gameState.startTime = Date.now();
     gameState.tabHiddenTime = null; // Reset tab hidden time
     gameState.totalPausedTime = 0; // Reset total paused time
+    gameState.hardMode = wasHardMode; // Preserve hard mode
+    gameState.score = 0; // Reset score
     
     // Initialize rerolls: 3 base + 0.1 per permanent level
     const permanentLevels = PermanentStats.totalLevelsGained;
@@ -4447,7 +4541,10 @@ function retryGame() {
 }
 
 function returnToMainMenu() {
+    gameState.hardMode = false; // Reset hard mode when returning to menu
     restartGame();
+    // Update highest score display
+    updateHighestScoreDisplay();
     // Show start menu
     const startScreen = document.getElementById('startScreen');
     startScreen.classList.add('active');
@@ -4529,6 +4626,7 @@ async function initGame() {
     
     // Start game button
     document.getElementById('startButton').addEventListener('click', () => {
+        gameState.hardMode = false; // Reset hard mode when starting normal game
         document.getElementById('startScreen').classList.remove('active');
         gameState.startTime = Date.now();
         gameState.tabHiddenTime = null; // Reset tab hidden time
@@ -4714,16 +4812,49 @@ async function initGame() {
     
     // Win main menu button (returns to start menu from win screen)
     document.getElementById('winMainMenuButton').addEventListener('click', () => {
+        gameState.hardMode = false; // Reset hard mode when returning to menu
         returnToMainMenu();
+    });
+    
+    // Hard mode button (starts game in hard mode)
+    document.getElementById('hardModeButton').addEventListener('click', () => {
+        gameState.hardMode = true;
+        document.getElementById('winModal').classList.remove('active');
+        document.getElementById('startScreen').classList.remove('active');
+        gameState.startTime = Date.now();
+        gameState.tabHiddenTime = null;
+        gameState.totalPausedTime = 0;
+        gameState.startLevel = gameState.level;
+        
+        // Initialize rerolls: 3 base + 0.05 per permanent level (halved)
+        const permanentLevels = PermanentStats.totalLevelsGained;
+        gameState.rerolls = 3 + (permanentLevels * 0.05);
+        console.log('Hard mode game started!');
+        if (!gameState.player) {
+            console.error('ERROR: Player not initialized!');
+        }
+        // Play gameplay music when game starts
+        setTimeout(() => {
+            MusicManager.playGameplay();
+        }, 100);
+        requestAnimationFrame(gameLoop);
     });
     
     // Initialize UI
     updateUI();
     updatePermanentStatsUI();
     updateLogoDisplay();
+    updateHighestScoreDisplay();
     
     // Start the game loop (it will pause when challenge modal is active)
     requestAnimationFrame(gameLoop);
+}
+
+function updateHighestScoreDisplay() {
+    const highestScoreDisplay = document.getElementById('highestScoreDisplay');
+    if (highestScoreDisplay) {
+        highestScoreDisplay.textContent = PermanentStats.highestScore.toLocaleString();
+    }
 }
 
 function updateLogoDisplay() {
