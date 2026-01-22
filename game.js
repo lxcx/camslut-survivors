@@ -128,12 +128,12 @@ const PermanentStats = {
     // Get permanent bonuses (halved in hard mode)
     getBonuses() {
         const baseBonuses = {
-            xpGain: 1 + (this.totalLevelsGained * 0.02), // +2% per level (doubled)
-            damage: 1 + (this.totalLevelsGained * 0.005), // +0.5% per level
-            hp: 1 + (this.totalLevelsGained * 0.01), // +1% per level
-            cooldown: 1 - (this.totalLevelsGained * 0.003), // -0.3% per level
-            attackSize: 1 + (this.totalLevelsGained * 0.005), // +0.5% per level
-            speed: 1 + (this.totalLevelsGained * 0.001) // +0.1% per level
+            xpGain: 1 + (this.totalLevelsGained * 0.01), // +1% per level (halved from 2%)
+            damage: 1 + (this.totalLevelsGained * 0.0025), // +0.25% per level (halved from 0.5%)
+            hp: 1 + (this.totalLevelsGained * 0.005), // +0.5% per level (halved from 1%)
+            cooldown: 1 - (this.totalLevelsGained * 0.0015), // -0.15% per level (halved from 0.3%)
+            attackSize: 1 + (this.totalLevelsGained * 0.0025), // +0.25% per level (halved from 0.5%)
+            speed: 1 + (this.totalLevelsGained * 0.0005) // +0.05% per level (halved from 0.1%)
         };
         
         // Reduce bonuses to 1/5th in hard mode
@@ -632,6 +632,9 @@ function playerWins() {
     }
     
     CONFIG.isGameOver = true;
+    
+    // Log weapon DPS stats
+    logWeaponDPS();
     
     // Add boss kill bonus: 1000 base points, doubled in hard mode
     const bossBonus = 1000 * (gameState.hardMode ? 2 : 1);
@@ -2265,11 +2268,12 @@ class Enemy {
 
 // Strike Class (for dildo - whip style)
 class Strike {
-    constructor(playerX, playerY, side, damage, range, duration = 500, rotateAround = false, rotationSpeed = 0, strikeSize = 128) {
+    constructor(playerX, playerY, side, damage, range, duration = 500, rotateAround = false, rotationSpeed = 0, strikeSize = 128, weaponType = null) {
         this.playerX = playerX; // Player X position when strike was created
         this.playerY = playerY; // Player Y position when strike was created
         this.side = side; // 'left' or 'right' (or 'rotate' for level 5)
         this.damage = damage;
+        this.weaponType = weaponType; // Track which weapon created this strike
         this.range = range; // Strike range
         this.created = Date.now();
         this.duration = duration; // Fade duration (increases with level)
@@ -2349,6 +2353,15 @@ class Strike {
                     this.enemyHitTimes.set(i, now);
                     
                     const killed = enemy.takeDamage(this.damage);
+                    
+                    // Track damage for weapon DPS calculation
+                    if (this.weaponType) {
+                        const weapon = gameState.weapons.find(w => w.type === this.weaponType);
+                        if (weapon) {
+                            weapon.totalDamage += this.damage;
+                        }
+                    }
+                    
                     if (killed) {
                         spawnExperienceOrb(enemy.x, enemy.y, enemy.xpValue);
                         gameState.enemies.splice(i, 1);
@@ -2527,6 +2540,15 @@ class CollarAura {
                 
                 if (distance < hitboxRadius + enemy.radius) {
                     const killed = enemy.takeDamage(this.damage);
+                    
+                    // Track damage for weapon DPS calculation
+                    if (this.weaponType) {
+                        const weapon = gameState.weapons.find(w => w.type === this.weaponType);
+                        if (weapon) {
+                            weapon.totalDamage += this.damage;
+                        }
+                    }
+                    
                     if (killed) {
                         spawnExperienceOrb(enemy.x, enemy.y, enemy.xpValue);
                         gameState.enemies.splice(i, 1);
@@ -2614,12 +2636,13 @@ class CollarAura {
 
 // Damage Pool Class (for ovulation - Santa Water style)
 class DamagePool {
-    constructor(x, y, radius, damage, duration, level = 1, damageMultiplier = 1.0) {
+    constructor(x, y, radius, damage, duration, level = 1, damageMultiplier = 1.0, weaponType = null) {
         this.x = x;
         this.y = y;
         this.baseRadius = radius; // Base radius (for level 5 expansion)
         this.radius = radius; // Current radius (expands at level 5)
         this.damage = damage;
+        this.weaponType = weaponType; // Track which weapon created this pool
         this.duration = duration; // Total lifetime in ms
         this.created = Date.now();
         this.damageInterval = 200; // Damage every 200ms
@@ -2659,6 +2682,15 @@ class DamagePool {
                 // Enemy is in pool range
                 if (distance < this.radius + enemy.radius) {
                     const killed = enemy.takeDamage(this.damage);
+                    
+                    // Track damage for weapon DPS calculation
+                    if (this.weaponType) {
+                        const weapon = gameState.weapons.find(w => w.type === this.weaponType);
+                        if (weapon) {
+                            weapon.totalDamage += this.damage;
+                        }
+                    }
+                    
                     if (killed) {
                         spawnExperienceOrb(enemy.x, enemy.y, enemy.xpValue);
                         gameState.enemies.splice(i, 1);
@@ -2751,12 +2783,13 @@ class DamagePool {
 
 // Projectile Class
 class Projectile {
-    constructor(x, y, angle, speed, damage, type = 'normal', pierce = false, sizeMultiplier = 1, opacity = 1.0, lifetime = 2000, weaponLevel = 1) {
+    constructor(x, y, angle, speed, damage, type = 'normal', pierce = false, sizeMultiplier = 1, opacity = 1.0, lifetime = 2000, weaponLevel = 1, weaponType = null) {
         this.x = x;
         this.y = y;
         this.angle = angle;
         this.speed = speed; // pixels per second (scaled)
         this.damage = damage;
+        this.weaponType = weaponType; // Track which weapon created this projectile
         // Apply permanent attack size bonus to projectile radius
         const bonuses = PermanentStats.getBonuses();
         this.radius = 5 * CONFIG.scaleFactor * bonuses.attackSize;
@@ -2811,6 +2844,14 @@ class Projectile {
             
             if (distance < hitRadius + enemy.radius) {
                 const killed = enemy.takeDamage(this.damage);
+                
+                // Track damage for weapon DPS calculation
+                if (this.weaponType) {
+                    const weapon = gameState.weapons.find(w => w.type === this.weaponType);
+                    if (weapon) {
+                        weapon.totalDamage += this.damage;
+                    }
+                }
                 
                 // Apply flamed effect if Hitachi projectile
                 if (this.type === 'hitachi') {
@@ -3161,6 +3202,10 @@ class Weapon {
         this.level = 1;
         this.cooldown = 0;
         this.lastFire = -9999; // Allow immediate firing
+        
+        // Track damage and time for DPS calculation
+        this.totalDamage = 0;
+        this.createdAt = Date.now();
 
         // Apply permanent damage bonus (+1% per level gained)
         const bonuses = PermanentStats.getBonuses();
@@ -3243,20 +3288,20 @@ class Weapon {
                 // Level 5: create two rotating auras
                 if (this.level >= 5) {
                     // First aura: clockwise rotation, pulse starts at 0
-                    const aura1 = new CollarAura(auraRadius, auraDamage, damageInterval, this.level, 1);
+                    const aura1 = new CollarAura(auraRadius, auraDamage, damageInterval, this.level, 1, this.type);
                     aura1.weaponId = this;
                     aura1.pulsePhase = 0; // Start at beginning of pulse cycle
                     gameState.collarAuras.push(aura1);
                     
                     // Second aura: counterclockwise rotation (offset by 180 degrees), pulse starts at opposite end
-                    const aura2 = new CollarAura(auraRadius, auraDamage, damageInterval, this.level, -1);
+                    const aura2 = new CollarAura(auraRadius, auraDamage, damageInterval, this.level, -1, this.type);
                     aura2.weaponId = this;
                     aura2.rotationAngle = Math.PI; // Start 180 degrees offset
                     aura2.pulsePhase = Math.PI; // Start at opposite end of pulse cycle (180 degrees phase offset)
                     gameState.collarAuras.push(aura2);
                 } else {
                     // Single aura for levels 1-4
-                    const aura = new CollarAura(auraRadius, auraDamage, damageInterval, this.level, 0);
+                    const aura = new CollarAura(auraRadius, auraDamage, damageInterval, this.level, 0, this.type);
                     aura.weaponId = this;
                     gameState.collarAuras.push(aura);
                 }
@@ -3314,7 +3359,7 @@ class Weapon {
             // Base damage without bonuses is 8, so multiplier = current damage / 8
             const damageMultiplier = this.damage / 8;
             
-            const pool = new DamagePool(poolX, poolY, poolRadius, poolDamage, poolDuration, this.level, damageMultiplier);
+            const pool = new DamagePool(poolX, poolY, poolRadius, poolDamage, poolDuration, this.level, damageMultiplier, this.type);
             gameState.damagePools.push(pool);
             return; // Exit early, no need to find enemies
         }
@@ -3374,18 +3419,19 @@ class Weapon {
                     strikeDurationRotating,
                     true,  // rotateAround
                     rotationSpeed,  // rotationSpeed (degrees per second)
-                    strikeSize  // Pass strike size for visual and hitbox scaling
+                    strikeSize,  // Pass strike size for visual and hitbox scaling
+                    this.type // Pass weapon type for damage tracking
                 );
                 gameState.strikes.push(rotatingStrike);
             } else {
                 // Normal behavior: left then right
                 // Create left strike immediately
-                const leftStrike = new Strike(player.x, player.y, 'left', strikeDamage, strikeRange, strikeDuration, false, 0, strikeSize);
+                const leftStrike = new Strike(player.x, player.y, 'left', strikeDamage, strikeRange, strikeDuration, false, 0, strikeSize, this.type);
                 gameState.strikes.push(leftStrike);
                 
                 // Create right strike 0.1 seconds (100ms) after left
                 setTimeout(() => {
-                    const rightStrike = new Strike(player.x, player.y, 'right', strikeDamage, strikeRange, strikeDuration, false, 0, strikeSize);
+                    const rightStrike = new Strike(player.x, player.y, 'right', strikeDamage, strikeRange, strikeDuration, false, 0, strikeSize, this.type);
                     gameState.strikes.push(rightStrike);
                 }, 100);
             }
@@ -3467,7 +3513,8 @@ class Weapon {
                                     bonuses.attackSize,   // Apply attack size bonus to size multiplier
                                     0.25,  // 25% opacity (reduced by 50% from 50%)
                                     hitachiLifetime,
-                                    this.level // Weapon level for size scaling
+                                    this.level, // Weapon level for size scaling
+                                    this.type // Pass weapon type for damage tracking
                                 );
                                 gameState.projectiles.push(projectile);
                             }
@@ -3498,7 +3545,8 @@ class Weapon {
                                     bonuses.attackSize,   // Apply attack size bonus to size multiplier
                                     0.5,   // 50% opacity (reduced by 50% from 100%)
                                     hitachiLifetime,
-                                    this.level // Weapon level for size scaling
+                                    this.level, // Weapon level for size scaling
+                                    this.type // Pass weapon type for damage tracking
                                 );
                                 gameState.projectiles.push(projectile);
                             }
@@ -3556,7 +3604,8 @@ class Weapon {
                     5.0 * bonuses.attackSize,  // 500% size (5x) * attack size bonus
                     1.0,  // Full opacity
                     2000, // Lifetime
-                    this.level // Weapon level for enemy projectile absorption
+                    this.level, // Weapon level for enemy projectile absorption
+                    this.type // Pass weapon type for damage tracking
                 );
                 gameState.projectiles.push(projectile);
             } else if (this.type === 'buttplug') {
@@ -3579,7 +3628,8 @@ class Weapon {
                     bonuses.attackSize,   // Apply attack size bonus to size multiplier
                     1.0,   // Full opacity
                     lifetime,  // Lifetime: 2 seconds (levels 1-4), 5 seconds (level 5)
-                    this.level // Weapon level for enemy projectile absorption
+                    this.level, // Weapon level for enemy projectile absorption
+                    this.type // Pass weapon type for damage tracking
                 );
                 gameState.projectiles.push(projectile);
             } else {
@@ -3595,7 +3645,10 @@ class Weapon {
                         'normal',
                         false, // No piercing
                         1.0,   // Normal size
-                        1.0    // Full opacity
+                        1.0,   // Full opacity
+                        2000,  // Default lifetime
+                        1,     // Default weapon level
+                        this.type // Pass weapon type for damage tracking
                     );
                     gameState.projectiles.push(projectile);
                 }
@@ -3656,12 +3709,12 @@ class Weapon {
                 gameState.collarAuras = gameState.collarAuras.filter(a => a.weaponId === this);
                 
                 // Create two new rotating auras
-                const aura1 = new CollarAura(auraRadius, auraDamage, damageInterval, this.level, 1);
+                const aura1 = new CollarAura(auraRadius, auraDamage, damageInterval, this.level, 1, this.type);
                 aura1.weaponId = this;
                 aura1.pulsePhase = 0; // Start at beginning of pulse cycle
                 gameState.collarAuras.push(aura1);
                 
-                const aura2 = new CollarAura(auraRadius, auraDamage, damageInterval, this.level, -1);
+                const aura2 = new CollarAura(auraRadius, auraDamage, damageInterval, this.level, -1, this.type);
                 aura2.weaponId = this;
                 aura2.rotationAngle = Math.PI; // Start 180 degrees offset
                 aura2.pulsePhase = Math.PI; // Start at opposite end of pulse cycle (180 degrees phase offset)
@@ -3785,7 +3838,9 @@ function checkLevelUp() {
         const oldLevel = gameState.level;
         gameState.level++;
         gameState.xp -= gameState.xpNeeded;
-        gameState.xpNeeded = Math.floor(gameState.xpNeeded * 1.1);
+        // In hard mode, XP requirements grow twice as fast (1.2x instead of 1.1x)
+        const xpGrowthMultiplier = gameState.hardMode ? 1.2 : 1.1;
+        gameState.xpNeeded = Math.floor(gameState.xpNeeded * xpGrowthMultiplier);
         
         // Track levels gained for permanent stats (will be saved on death)
         // This is tracked per session, not per level up
@@ -4742,8 +4797,26 @@ function getRandomHint() {
     return HINTS[Math.floor(Math.random() * HINTS.length)];
 }
 
+// Log weapon DPS stats to console
+function logWeaponDPS() {
+    const now = Date.now();
+    console.log('=== Weapon DPS Stats ===');
+    gameState.weapons.forEach(weapon => {
+        const timeInPlay = (now - weapon.createdAt) / 1000; // Convert to seconds
+        const dps = timeInPlay > 0 ? weapon.totalDamage / timeInPlay : 0;
+        console.log(`${weapon.name} (Level ${weapon.level}):`);
+        console.log(`  Total Damage: ${weapon.totalDamage.toLocaleString()}`);
+        console.log(`  Time in Play: ${timeInPlay.toFixed(2)}s`);
+        console.log(`  DPS: ${dps.toFixed(2)}`);
+    });
+    console.log('========================');
+}
+
 function gameOver() {
     CONFIG.isGameOver = true;
+    
+    // Log weapon DPS stats
+    logWeaponDPS();
     
     // Update highest score
     PermanentStats.updateHighestScore(gameState.score);
@@ -4792,7 +4865,8 @@ function restartGame() {
     gameState.level = 1;
     gameState.startLevel = 1; // Reset starting level
     gameState.xp = 0;
-    gameState.xpNeeded = 10;
+    // In hard mode, start with double XP requirement
+    gameState.xpNeeded = gameState.hardMode ? 20 : 10;
     gameState.startTime = Date.now();
     gameState.tabHiddenTime = null; // Reset tab hidden time
     gameState.totalPausedTime = 0; // Reset total paused time
@@ -4968,6 +5042,25 @@ async function initGame() {
             muteSoundEffectsCheckbox.checked = SoundEffects.muted;
         }
         document.getElementById('settingsModal').classList.add('active');
+        
+        // Classic IRC password joke
+        console.log('<Cthon98> hey, if you type in your pw, it will show as stars');
+        console.log('<Cthon98> ********* see!');
+        console.log('<AzureDiamond> hunter2');
+        console.log('<AzureDiamond> doesnt look like stars to me');
+        console.log('<Cthon98> <AzureDiamond> *******');
+        console.log('<Cthon98> thats what I see');
+        console.log('<AzureDiamond> oh, really?');
+        console.log('<Cthon98> Absolutely');
+        console.log('<AzureDiamond> you can go hunter2 my hunter2-ing hunter2');
+        console.log('<AzureDiamond> haha, does that look funny to you?');
+        console.log('<Cthon98> lol, yes. See, when YOU type hunter2, it shows to us as *******');
+        console.log('<AzureDiamond> thats neat, I didnt know IRC did that');
+        console.log('<Cthon98> yep, no matter how many times you type hunter2, it will show to us as *******');
+        console.log('<AzureDiamond> awesome!');
+        console.log('<AzureDiamond> wait, how do you know my pw?');
+        console.log('<Cthon98> er, I just copy pasted YOUR ******\'s and it appears to YOU as hunter2 cause its your pw');
+        console.log('<AzureDiamond> oh, ok.');
     });
 
     // Close Settings button
@@ -5085,12 +5178,11 @@ async function initGame() {
             collarWeapon.fire();
         }
         
-        // Start game at 4:30 (270 seconds) for boss testing
-        // Set startTime to 270 seconds ago so gameTime will be 270
-        gameState.startTime = Date.now() - (270 * 1000);
+        // Start game at beginning (not near boss)
+        gameState.startTime = Date.now();
         gameState.startLevel = gameState.level; // Track starting level for permanent stats
-        CONFIG.gameTime = 270; // Set game time to 4:30
-        console.log('Test mode started with all weapons at level 5! Game time set to 4:30 for boss testing.');
+        CONFIG.gameTime = 0; // Start at beginning
+        console.log('Test mode started with all weapons at level 5!');
         MusicManager.playGameplay(); // Play gameplay music when test mode starts
         requestAnimationFrame(gameLoop);
     }
@@ -5142,7 +5234,8 @@ async function initGame() {
         gameState.weapons = [new Weapon('buttplug')];
         gameState.level = 1;
         gameState.xp = 0;
-        gameState.xpNeeded = 10;
+        // In hard mode, start with double XP requirement
+    gameState.xpNeeded = gameState.hardMode ? 20 : 10;
         
         // Initialize rerolls: 3 base + 0.05 per permanent level (halved)
         const permanentLevels = PermanentStats.totalLevelsGained;
