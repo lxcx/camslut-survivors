@@ -957,7 +957,7 @@ class Boss {
         this.lastFlipAttack = 0;
         this.auraActive = false;
         this.auraRadius = 120; // 20% increase from 100 (100 * 1.2 = 120)
-        this.auraDamage = 40;
+        this.auraDamage = 80; // Doubled from 40
         this.auraDamageInterval = 200; // Damage every 200ms
         this.lastAuraDamage = 0;
         
@@ -1089,12 +1089,13 @@ class Boss {
                     this.x,
                     this.y,
                     angle,
-                    270, // Speed (pixels per second, scaled) - 25% faster than regular incel (216 * 1.25 = 270)
-                    40, // Double damage: 20 * 2 = 40
+                    540, // Speed (pixels per second, scaled) - doubled from 270
+                    80, // Double damage: 40 * 2 = 80
                     'incel',
                     Infinity, // No max distance
                     Infinity, // No lifetime limit
-                    false // Boss projectiles are never elite
+                    false, // Boss projectiles are never elite
+                    true // But they are super elite size (4x)
                 );
                 gameState.enemyProjectiles.push(projectile);
                 this.lastIncelShot = now;
@@ -1106,12 +1107,12 @@ class Boss {
             // Flip attack
             this.updateFlipAttack(now, player);
             
-            // Body contact damage (like politicians: 40 * 2 = 80 damage)
+            // Body contact damage (like politicians: 40 * 2 = 80 damage, doubled to 160)
             const dx = player.x - this.x;
             const dy = player.y - this.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
             if (distance < this.radius + player.radius) {
-                player.takeDamage(80); // Double politician body damage: 40 * 2 = 80
+                player.takeDamage(160); // Double politician body damage: 80 * 2 = 160
             }
         }
     }
@@ -1164,7 +1165,7 @@ class Boss {
                     this.politicianState = 'attacking';
                     this.politicianStateStartTime = now;
                     
-                    // Shoot 8 spheres in 8 directions (double damage: 30 * 2 = 60)
+                    // Shoot 8 spheres in 8 directions (double damage: 60 * 2 = 120)
                     const directions = [
                         0, Math.PI / 4, Math.PI / 2, 3 * Math.PI / 4,
                         Math.PI, 5 * Math.PI / 4, 3 * Math.PI / 2, 7 * Math.PI / 4
@@ -1175,12 +1176,13 @@ class Boss {
                             this.x,
                             this.y,
                             angle,
-                            375, // Speed (pixels per second, scaled) - 25% faster than regular (300 * 1.25 = 375)
-                            60, // Double damage: 30 * 2 = 60
+                            750, // Speed (pixels per second, scaled) - doubled from 375
+                            120, // Double damage: 60 * 2 = 120
                             'politician',
                             120, // Max distance
                             Infinity, // No lifetime limit
-                            false // Boss projectiles are never elite
+                            false, // Boss projectiles are never elite
+                            true // But they are super elite size (4x)
                         );
                         gameState.enemyProjectiles.push(projectile);
                     }
@@ -1204,12 +1206,13 @@ class Boss {
                             this.x,
                             this.y,
                             angle,
-                            375, // Speed (pixels per second, scaled) - 25% faster than regular (300 * 1.25 = 375)
-                            60, // Double damage
+                            750, // Speed (pixels per second, scaled) - doubled from 375
+                            120, // Double damage: 60 * 2 = 120
                             'politician',
                             120, // Max distance
                             Infinity, // No lifetime limit
-                            false // Boss projectiles are never elite
+                            false, // Boss projectiles are never elite
+                            true // But they are super elite size (4x)
                         );
                         gameState.enemyProjectiles.push(projectile);
                     }
