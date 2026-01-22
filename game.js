@@ -2062,7 +2062,7 @@ class Enemy {
                 const dx = this.chargeTargetX - this.x;
                 const dy = this.chargeTargetY - this.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
-                const chargeSpeed = 480; // pixels per second (scaled) - was 8 per frame
+                const chargeSpeed = 100; // pixels per second (scaled)
 
                 if (distance > 5) {
                     // Scale speed by deltaTime and scaleFactor for consistent movement
