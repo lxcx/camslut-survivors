@@ -4900,6 +4900,18 @@ function restartGame() {
     CONFIG.isGameOver = false;
 
     document.getElementById('gameOverModal').classList.remove('active');
+    // Ensure items panel is visible
+    const itemsPanel = document.querySelector('.items-panel');
+    if (itemsPanel) {
+        itemsPanel.style.display = 'flex';
+        itemsPanel.style.visibility = 'visible';
+    }
+    // Ensure logo overlay is visible
+    const logoOverlay = document.getElementById('gameLogoOverlay');
+    if (logoOverlay) {
+        logoOverlay.style.display = 'block';
+        logoOverlay.style.visibility = 'visible';
+    }
     document.getElementById('winModal').classList.remove('active');
     
     updateUI();
@@ -5013,6 +5025,18 @@ async function initGame() {
     document.getElementById('startButton').addEventListener('click', () => {
         gameState.hardMode = false; // Reset hard mode when starting normal game
         document.getElementById('startScreen').classList.remove('active');
+        // Ensure items panel is visible
+        const itemsPanel = document.querySelector('.items-panel');
+        if (itemsPanel) {
+            itemsPanel.style.display = 'flex';
+            itemsPanel.style.visibility = 'visible';
+        }
+        // Ensure logo overlay is visible
+        const logoOverlay = document.getElementById('gameLogoOverlay');
+        if (logoOverlay) {
+            logoOverlay.style.display = 'block';
+            logoOverlay.style.visibility = 'visible';
+        }
         gameState.startTime = Date.now();
         gameState.tabHiddenTime = null; // Reset tab hidden time
         gameState.totalPausedTime = 0; // Reset total paused time
@@ -5225,6 +5249,18 @@ async function initGame() {
         gameState.endlessMode = false; // Reset endless mode
         gameState.endlessDifficultyLevel = 0; // Reset endless difficulty
         document.getElementById('startScreen').classList.remove('active');
+        // Ensure items panel is visible
+        const itemsPanel = document.querySelector('.items-panel');
+        if (itemsPanel) {
+            itemsPanel.style.display = 'flex';
+            itemsPanel.style.visibility = 'visible';
+        }
+        // Ensure logo overlay is visible
+        const logoOverlay = document.getElementById('gameLogoOverlay');
+        if (logoOverlay) {
+            logoOverlay.style.display = 'block';
+            logoOverlay.style.visibility = 'visible';
+        }
         gameState.startTime = Date.now();
         gameState.tabHiddenTime = null;
         gameState.totalPausedTime = 0;

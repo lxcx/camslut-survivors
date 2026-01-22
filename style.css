@@ -50,6 +50,8 @@ body {
     right: 15px;
     z-index: 100;
     pointer-events: none;
+    display: block !important;
+    visibility: visible !important;
 }
 
 .logo-overlay-img {
@@ -83,13 +85,14 @@ body {
 }
 
 .items-panel {
-    display: flex;
+    display: flex !important;
     flex-direction: column;
     gap: 15px;
     width: 250px;
     flex-shrink: 0;
     position: relative;
     z-index: 100;
+    visibility: visible !important;
 }
 
 .weapons-list,
