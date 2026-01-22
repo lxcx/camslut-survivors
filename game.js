@@ -1747,6 +1747,7 @@ class Enemy {
             this.lastShot = Date.now() - this.shootCooldown; // Allow immediate shot
             this.isFiring = false; // Track if incel is currently firing (paused)
             this.fireStartTime = 0; // Track when firing started
+            this.hasFiredThisCycle = false; // Track if we've fired during the current pause cycle
         } else if (type === 'politicians') {
             this.radius = 44 * CONFIG.scaleFactor; // Doubled from 22, scaled
             this.baseSpeed = 10; // pixels per second (scaled) - was 0.6/frame ≈ 10/sec at 16-17 FPS
@@ -1756,6 +1757,7 @@ class Enemy {
             this.color = '#8b0000';
             baseXpValue = 3;
             this.xpValue = baseXpValue;
+            this.hasAttemptedProjectileAttack = false; // Track if politician has charged and attempted projectile attack
             this.damage = 40; // Body contact damage
             this.difficulty = 3;
             this.state = 'idle'; // 'idle', 'pulsing', 'charging', 'attacking'
@@ -1941,21 +1943,52 @@ class Enemy {
 
         // Type-specific behavior
         if (this.type === 'incels') {
-            // Incels: alternate between moving towards player and firing (pause for 200ms when firing)
+            // Incels: alternate between moving towards player and firing (pause 100ms before and 100ms after firing)
             const dx = player.x - this.x;
             const dy = player.y - this.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
 
             // Check if we're in firing pause state
             if (this.isFiring) {
-                // Check if 200ms pause is over
-                if (now - this.fireStartTime >= 200) {
+                const elapsed = now - this.fireStartTime;
+                
+                // Stop movement completely during entire pause (100ms before + 100ms after = 200ms total)
+                this.speed = 0;
+                
+                // Fire at 100ms mark (after pre-firing pause)
+                if (!this.hasFiredThisCycle && elapsed >= 100) {
+                    const angle = Math.atan2(player.y - this.y, player.x - this.x);
+                    // Elite enemies: double projectile lifetime
+                    // Base lifetime for incel projectiles (5 seconds at 216 speed ≈ 1080 pixels)
+                    const baseLifetime = 5000; // 5 seconds in milliseconds
+                    const projectileLifetime = this.isElite ? baseLifetime * 2 : Infinity; // Double lifetime for elite
+                    const projectile = new EnemyProjectile(
+                        this.x,
+                        this.y,
+                        angle,
+                        216, // Speed (pixels per second, scaled) - 10% slower (240 * 0.9 = 216)
+                        20, // Damage
+                        'incel',
+                        Infinity, // No max distance for incels
+                        projectileLifetime,
+                        this.isElite, // Pass elite status
+                        this.isSuperElite // Pass super elite status
+                    );
+                    gameState.enemyProjectiles.push(projectile);
+                    this.lastShot = now;
+                    this.hasFiredThisCycle = true;
+                }
+                
+                // Check if 200ms pause is over (100ms pre + 100ms post)
+                if (elapsed >= 200) {
                     this.isFiring = false;
                     this.fireStartTime = 0;
+                    this.hasFiredThisCycle = false;
+                    // Restore speed after pause
+                    this.speed = this.baseSpeed * this.slowMultiplier;
                 }
-                // Don't move while firing
             } else {
-                // Not firing - move towards player
+                // Not firing - move towards player (speed already set by slow effects above)
                 if (distance > 0) {
                     // Scale speed by deltaTime and scaleFactor for consistent movement
                     const scaledSpeed = this.speed * CONFIG.scaleFactor * deltaTime;
@@ -1964,32 +1997,14 @@ class Enemy {
                     // Update facing direction (right by default, flip if moving left)
                     this.facingRight = dx >= 0;
                 }
-            }
-
-            // Shoot at player (only if not already in firing pause)
-            if (!this.isFiring && now - this.lastShot >= this.shootCooldown) {
-                const angle = Math.atan2(player.y - this.y, player.x - this.x);
-                // Elite enemies: double projectile lifetime
-                // Base lifetime for incel projectiles (5 seconds at 216 speed ≈ 1080 pixels)
-                const baseLifetime = 5000; // 5 seconds in milliseconds
-                const projectileLifetime = this.isElite ? baseLifetime * 2 : Infinity; // Double lifetime for elite
-                const projectile = new EnemyProjectile(
-                    this.x,
-                    this.y,
-                    angle,
-                    216, // Speed (pixels per second, scaled) - 10% slower (240 * 0.9 = 216)
-                    20, // Damage
-                    'incel',
-                    Infinity, // No max distance for incels
-                    projectileLifetime,
-                    this.isElite, // Pass elite status
-                    this.isSuperElite // Pass super elite status
-                );
-                gameState.enemyProjectiles.push(projectile);
-                this.lastShot = now;
-                // Enter firing pause state
-                this.isFiring = true;
-                this.fireStartTime = now;
+                
+                // Check if ready to start firing sequence (cooldown is up)
+                if (now - this.lastShot >= this.shootCooldown) {
+                    // Enter firing pause state (100ms before firing)
+                    this.isFiring = true;
+                    this.fireStartTime = now;
+                    this.hasFiredThisCycle = false;
+                }
             }
 
             // Check collision with player (no contact damage for incels)
@@ -2001,18 +2016,24 @@ class Enemy {
             const stateTime = now - this.stateStartTime;
 
             if (this.state === 'idle') {
-                // Move slowly towards player
+                // Move slowly towards player, but stop before contact range if haven't attempted projectile attack yet
                 const dx = player.x - this.x;
                 const dy = player.y - this.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
+                const contactRange = this.radius + player.radius;
 
                 if (distance > 0) {
-                    // Scale speed by deltaTime and scaleFactor for consistent movement
-                    const scaledSpeed = this.speed * CONFIG.scaleFactor * deltaTime;
-                    this.x += (dx / distance) * scaledSpeed;
-                    this.y += (dy / distance) * scaledSpeed;
-                    // Update facing direction (right by default, flip if moving left)
-                    this.facingRight = dx >= 0;
+                    // If haven't attempted projectile attack, maintain minimum distance (contact range + buffer)
+                    const minDistance = this.hasAttemptedProjectileAttack ? 0 : contactRange + 10; // 10px buffer
+                    
+                    if (distance > minDistance) {
+                        // Scale speed by deltaTime and scaleFactor for consistent movement
+                        const scaledSpeed = this.speed * CONFIG.scaleFactor * deltaTime;
+                        this.x += (dx / distance) * scaledSpeed;
+                        this.y += (dy / distance) * scaledSpeed;
+                        // Update facing direction (right by default, flip if moving left)
+                        this.facingRight = dx >= 0;
+                    }
                 }
 
                 // Switch to pulsing after 2.2 seconds (increased by 200ms from 2000)
@@ -2057,6 +2078,8 @@ class Enemy {
                         this.hasShotSpheres = true;
                         this.state = 'attacking';
                         this.stateStartTime = now;
+                        // Mark that politician has attempted projectile attack (can now deal contact damage)
+                        this.hasAttemptedProjectileAttack = true;
                         
                         // Shoot 8 spheres in 8 directions
                         const directions = [
@@ -2095,6 +2118,8 @@ class Enemy {
                     this.hasShotSpheres = true;
                     this.state = 'attacking';
                     this.stateStartTime = now;
+                    // Mark that politician has attempted projectile attack (can now deal contact damage)
+                    this.hasAttemptedProjectileAttack = true;
                     
                     // Shoot 8 spheres
                     const directions = [
@@ -2132,15 +2157,19 @@ class Enemy {
                     this.state = 'idle';
                     this.stateStartTime = now;
                     this.hasShotSpheres = false; // Reset for next cycle
+                    this.hasAttemptedProjectileAttack = false; // Reset so they must attempt projectile attack first in next cycle
                 }
             }
 
             // Check collision with player (body contact damage)
-            const dx = player.x - this.x;
-            const dy = player.y - this.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            if (distance < this.radius + player.radius) {
-                player.takeDamage(this.damage);
+            // Only deal contact damage after charging and attempting projectile attack
+            if (this.hasAttemptedProjectileAttack) {
+                const dx = player.x - this.x;
+                const dy = player.y - this.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                if (distance < this.radius + player.radius) {
+                    player.takeDamage(this.damage);
+                }
             }
         } else {
             // Bills: move towards player
@@ -2881,6 +2910,7 @@ class Projectile {
             
             if (distance < hitRadius + enemy.radius) {
                 const killed = enemy.takeDamage(this.damage);
+                
                 
                 // Track damage for weapon DPS calculation
                 if (this.weaponType) {
