@@ -1249,8 +1249,8 @@ class Boss {
         const stateTime = now - this.politicianStateStartTime;
         
         if (this.politicianState === 'idle') {
-            // Switch to pulsing after 1.5 seconds (25% faster: 2000 * 0.75 = 1500ms)
-            if (stateTime > 1500) {
+            // Switch to pulsing after 1.65 seconds (25% faster: 2200 * 0.75 = 1650ms, increased by 200ms base)
+            if (stateTime > 1650) {
                 this.politicianState = 'pulsing';
                 this.politicianStateStartTime = now;
             }
@@ -1743,8 +1743,10 @@ class Enemy {
             this.xpValue = baseXpValue;
             this.damage = 0; // No contact damage, uses projectiles
             this.difficulty = 2;
-            this.shootCooldown = 2000; // Shoot every 2 seconds
+            this.shootCooldown = 2200; // Shoot every 2.2 seconds (increased by 200ms from 2000)
             this.lastShot = Date.now() - this.shootCooldown; // Allow immediate shot
+            this.isFiring = false; // Track if incel is currently firing (paused)
+            this.fireStartTime = 0; // Track when firing started
         } else if (type === 'politicians') {
             this.radius = 44 * CONFIG.scaleFactor; // Doubled from 22, scaled
             this.baseSpeed = 10; // pixels per second (scaled) - was 0.6/frame ≈ 10/sec at 16-17 FPS
@@ -1939,22 +1941,33 @@ class Enemy {
 
         // Type-specific behavior
         if (this.type === 'incels') {
-            // Incels: move towards player and shoot
+            // Incels: alternate between moving towards player and firing (pause for 200ms when firing)
             const dx = player.x - this.x;
             const dy = player.y - this.y;
             const distance = Math.sqrt(dx * dx + dy * dy);
 
-            if (distance > 0) {
-                // Scale speed by deltaTime and scaleFactor for consistent movement
-                const scaledSpeed = this.speed * CONFIG.scaleFactor * deltaTime;
-                this.x += (dx / distance) * scaledSpeed;
-                this.y += (dy / distance) * scaledSpeed;
-                // Update facing direction (right by default, flip if moving left)
-                this.facingRight = dx >= 0;
+            // Check if we're in firing pause state
+            if (this.isFiring) {
+                // Check if 200ms pause is over
+                if (now - this.fireStartTime >= 200) {
+                    this.isFiring = false;
+                    this.fireStartTime = 0;
+                }
+                // Don't move while firing
+            } else {
+                // Not firing - move towards player
+                if (distance > 0) {
+                    // Scale speed by deltaTime and scaleFactor for consistent movement
+                    const scaledSpeed = this.speed * CONFIG.scaleFactor * deltaTime;
+                    this.x += (dx / distance) * scaledSpeed;
+                    this.y += (dy / distance) * scaledSpeed;
+                    // Update facing direction (right by default, flip if moving left)
+                    this.facingRight = dx >= 0;
+                }
             }
 
-            // Shoot at player
-            if (now - this.lastShot >= this.shootCooldown) {
+            // Shoot at player (only if not already in firing pause)
+            if (!this.isFiring && now - this.lastShot >= this.shootCooldown) {
                 const angle = Math.atan2(player.y - this.y, player.x - this.x);
                 // Elite enemies: double projectile lifetime
                 // Base lifetime for incel projectiles (5 seconds at 216 speed ≈ 1080 pixels)
@@ -1974,6 +1987,9 @@ class Enemy {
                 );
                 gameState.enemyProjectiles.push(projectile);
                 this.lastShot = now;
+                // Enter firing pause state
+                this.isFiring = true;
+                this.fireStartTime = now;
             }
 
             // Check collision with player (no contact damage for incels)
@@ -1999,8 +2015,8 @@ class Enemy {
                     this.facingRight = dx >= 0;
                 }
 
-                // Switch to pulsing after 2 seconds
-                if (stateTime > 2000) {
+                // Switch to pulsing after 2.2 seconds (increased by 200ms from 2000)
+                if (stateTime > 2200) {
                     this.state = 'pulsing';
                     this.stateStartTime = now;
                 }
@@ -3242,9 +3258,9 @@ class Weapon {
             this.baseStrikeDuration = 500; // 0.5 seconds base duration
         } else if (type === 'buttplug') {
             this.name = 'Buttplug';
-            this.baseCooldown = 750;
-            this.originalBaseCooldown = 750; // Store original for minimum calculation
-            this.damage = Math.floor(8 * bonuses.damage);
+            this.baseCooldown = 1000; // Increased from 750ms
+            this.originalBaseCooldown = 1000; // Store original for minimum calculation
+            this.damage = Math.floor(10 * bonuses.damage); // Increased from 8 to 10
             this.projectileSpeed = 600; // pixels per second (scaled) - was 10 per frame
             this.count = 1; // Always 1 - never increases
         } else if (type === 'collar') {
@@ -3505,22 +3521,21 @@ class Weapon {
             
             const angle = Math.atan2(targetEnemy.y - player.y, targetEnemy.x - player.x);
                 
-                // Level 5: constant stream behavior
+                // Level 5: 10-flame burst (instead of continuous stream)
                 if (this.level >= 5) {
-                    const streamDelay = 50; // 0.05 seconds (50ms)
-                    const streamDuration = this.baseCooldown; // Stream for the full cooldown duration
-                    const streamCount = Math.floor(streamDuration / streamDelay);
+                    const burstDelay = 50; // 0.05 seconds (50ms) between each flame
+                    const burstCount = 10; // Fire 10 flames
                     
-                    // Fire constant stream of projectiles
-                    for (let i = 0; i < streamCount; i++) {
+                    // Fire burst of 10 projectiles
+                    for (let i = 0; i < burstCount; i++) {
                         setTimeout(() => {
                             // Find enemy with most health again (may have changed)
                             const currentTargetEnemy = findHighestHealthEnemy();
                             
                             if (currentTargetEnemy) {
                                 const currentAngle = Math.atan2(currentTargetEnemy.y - player.y, currentTargetEnemy.x - player.x);
-                                // Hitachi lifetime: 1 second base + 1 second per level (doubled travel distance)
-                                const hitachiLifetime = 1000 + (this.level * 1000); // 1000ms base + 1000ms per level
+                                // Hitachi lifetime: unlimited travel distance
+                                const hitachiLifetime = Infinity;
                                 // Get attack size bonus for size multiplier
                                 const bonuses = PermanentStats.getBonuses();
                                 const projectile = new Projectile(
@@ -3539,7 +3554,7 @@ class Weapon {
                                 );
                                 gameState.projectiles.push(projectile);
                             }
-                        }, i * streamDelay);
+                        }, i * burstDelay);
                     }
                 } else {
                     // Normal behavior: bursts with delays
@@ -3551,8 +3566,8 @@ class Weapon {
                             
                             if (currentTargetEnemy) {
                                 const currentAngle = Math.atan2(currentTargetEnemy.y - player.y, currentTargetEnemy.x - player.x);
-                                // Hitachi lifetime: 1 second base + 1 second per level (doubled travel distance)
-                                const hitachiLifetime = 1000 + (this.level * 1000); // 1000ms base + 1000ms per level
+                                // Hitachi lifetime: unlimited travel distance
+                                const hitachiLifetime = Infinity;
                                 // Get attack size bonus for size multiplier
                                 const bonuses = PermanentStats.getBonuses();
                                 const projectile = new Projectile(
@@ -3986,61 +4001,124 @@ function showUpgradeSelection() {
         
         if (upgrade.type === 'new_weapon') {
             const spriteName = `weapon-${upgrade.weapon}`;
-            const spriteData = SpriteManager.getSprite(spriteName);
-            if (spriteData && spriteData.image) {
-                spriteHtml = `<img src="${spriteData.image.src}" class="weapon-sprite-preview" alt="${upgrade.name}">`;
+            // Use cached sprite HTML if available, otherwise cache it
+            if (!gameState.weaponSpriteCache) {
+                gameState.weaponSpriteCache = {};
             }
+            if (!gameState.weaponSpriteCache[spriteName]) {
+                const spriteData = SpriteManager.getSprite(spriteName);
+                if (spriteData && spriteData.image) {
+                    gameState.weaponSpriteCache[spriteName] = `<img src="${spriteData.image.src}" class="weapon-sprite-preview" alt="${upgrade.name}">`;
+                } else {
+                    gameState.weaponSpriteCache[spriteName] = '';
+                }
+            }
+            spriteHtml = gameState.weaponSpriteCache[spriteName];
         } else if (upgrade.type === 'upgrade_weapon') {
             const spriteName = `weapon-${upgrade.weapon}`;
-            const spriteData = SpriteManager.getSprite(spriteName);
-            if (spriteData && spriteData.image) {
-                spriteHtml = `<img src="${spriteData.image.src}" class="weapon-sprite-preview" alt="${upgrade.name}">`;
+            // Use cached sprite HTML if available, otherwise cache it
+            if (!gameState.weaponSpriteCache) {
+                gameState.weaponSpriteCache = {};
             }
+            if (!gameState.weaponSpriteCache[spriteName]) {
+                const spriteData = SpriteManager.getSprite(spriteName);
+                if (spriteData && spriteData.image) {
+                    gameState.weaponSpriteCache[spriteName] = `<img src="${spriteData.image.src}" class="weapon-sprite-preview" alt="${upgrade.name}">`;
+                } else {
+                    gameState.weaponSpriteCache[spriteName] = '';
+                }
+            }
+            spriteHtml = gameState.weaponSpriteCache[spriteName];
             // Show available level (current + 1)
             const weapon = gameState.weapons.find(w => w.type === upgrade.weapon);
             if (weapon) {
                 nameText = `${upgrade.name} (Lv.${weapon.level + 1})`;
             }
         } else if (upgrade.type === 'chastity_cage') {
-            const spriteData = SpriteManager.getSprite('chastitycage');
-            if (spriteData && spriteData.image) {
-                spriteHtml = `<img src="${spriteData.image.src}" class="weapon-sprite-preview" alt="${upgrade.name}">`;
+            // Use cached sprite HTML if available, otherwise cache it
+            if (!gameState.upgradeSpriteCache) {
+                gameState.upgradeSpriteCache = {};
             }
+            if (!gameState.upgradeSpriteCache['chastitycage']) {
+                const spriteData = SpriteManager.getSprite('chastitycage');
+                if (spriteData && spriteData.image) {
+                    gameState.upgradeSpriteCache['chastitycage'] = `<img src="${spriteData.image.src}" class="weapon-sprite-preview" alt="${upgrade.name}">`;
+                } else {
+                    gameState.upgradeSpriteCache['chastitycage'] = '';
+                }
+            }
+            spriteHtml = gameState.upgradeSpriteCache['chastitycage'];
             // Show available level (current + 1, max 3)
             const nextLevel = Math.min(gameState.chastityCageLevel + 1, 3);
             if (gameState.chastityCageLevel > 0) {
                 nameText = `${upgrade.name} (Lv.${nextLevel})`;
             }
         } else if (upgrade.type === 'lube') {
-            const spriteData = SpriteManager.getSprite('lube');
-            if (spriteData && spriteData.image) {
-                spriteHtml = `<img src="${spriteData.image.src}" class="weapon-sprite-preview" alt="${upgrade.name}">`;
+            // Use cached sprite HTML if available, otherwise cache it
+            if (!gameState.upgradeSpriteCache) {
+                gameState.upgradeSpriteCache = {};
             }
+            if (!gameState.upgradeSpriteCache['lube']) {
+                const spriteData = SpriteManager.getSprite('lube');
+                if (spriteData && spriteData.image) {
+                    gameState.upgradeSpriteCache['lube'] = `<img src="${spriteData.image.src}" class="weapon-sprite-preview" alt="${upgrade.name}">`;
+                } else {
+                    gameState.upgradeSpriteCache['lube'] = '';
+                }
+            }
+            spriteHtml = gameState.upgradeSpriteCache['lube'];
             // Show available level (current + 1, max 5)
             const nextLevel = Math.min(gameState.lubeLevel + 1, 5);
             if (gameState.lubeLevel > 0) {
                 nameText = `${upgrade.name} (Lv.${nextLevel})`;
             }
         } else if (upgrade.type === 'damage') {
-            const spriteData = SpriteManager.getSprite('hiddenvibe');
-            if (spriteData && spriteData.image) {
-                spriteHtml = `<img src="${spriteData.image.src}" class="weapon-sprite-preview" alt="${upgrade.name}">`;
+            // Use cached sprite HTML if available, otherwise cache it
+            if (!gameState.upgradeSpriteCache) {
+                gameState.upgradeSpriteCache = {};
             }
+            if (!gameState.upgradeSpriteCache['hiddenvibe']) {
+                const spriteData = SpriteManager.getSprite('hiddenvibe');
+                if (spriteData && spriteData.image) {
+                    gameState.upgradeSpriteCache['hiddenvibe'] = `<img src="${spriteData.image.src}" class="weapon-sprite-preview" alt="${upgrade.name}">`;
+                } else {
+                    gameState.upgradeSpriteCache['hiddenvibe'] = '';
+                }
+            }
+            spriteHtml = gameState.upgradeSpriteCache['hiddenvibe'];
         } else if (upgrade.type === 'cock_ring') {
-            const spriteData = SpriteManager.getSprite('cockring');
-            if (spriteData && spriteData.image) {
-                spriteHtml = `<img src="${spriteData.image.src}" class="weapon-sprite-preview" alt="${upgrade.name}">`;
+            // Use cached sprite HTML if available, otherwise cache it
+            if (!gameState.upgradeSpriteCache) {
+                gameState.upgradeSpriteCache = {};
             }
+            if (!gameState.upgradeSpriteCache['cockring']) {
+                const spriteData = SpriteManager.getSprite('cockring');
+                if (spriteData && spriteData.image) {
+                    gameState.upgradeSpriteCache['cockring'] = `<img src="${spriteData.image.src}" class="weapon-sprite-preview" alt="${upgrade.name}">`;
+                } else {
+                    gameState.upgradeSpriteCache['cockring'] = '';
+                }
+            }
+            spriteHtml = gameState.upgradeSpriteCache['cockring'];
             // Show available level (current + 1, max 5)
             const nextLevel = Math.min(gameState.cockRingLevel + 1, 5);
             if (gameState.cockRingLevel > 0) {
                 nameText = `${upgrade.name} (Lv.${nextLevel})`;
             }
         } else if (upgrade.type === 'panties') {
-            const spriteData = SpriteManager.getSprite('panties');
-            if (spriteData && spriteData.image) {
-                spriteHtml = `<img src="${spriteData.image.src}" class="weapon-sprite-preview" alt="${upgrade.name}">`;
+            // Use cached sprite HTML if available, otherwise cache it
+            if (!gameState.upgradeSpriteCache) {
+                gameState.upgradeSpriteCache = {};
             }
+            if (!gameState.upgradeSpriteCache['panties']) {
+                const spriteData = SpriteManager.getSprite('panties');
+                if (spriteData && spriteData.image) {
+                    gameState.upgradeSpriteCache['panties'] = `<img src="${spriteData.image.src}" class="weapon-sprite-preview" alt="${upgrade.name}">`;
+                } else {
+                    gameState.upgradeSpriteCache['panties'] = '';
+                }
+            }
+            spriteHtml = gameState.upgradeSpriteCache['panties'];
             // Crotchless Panties is endless - don't show level
         }
         
