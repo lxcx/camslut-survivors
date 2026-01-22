@@ -2820,9 +2820,9 @@ class Projectile {
         // For buttplug: track how many enemy projectiles can be absorbed
         if (this.type === 'buttplug') {
             // Level 1-4: linear scaling (1, 1.5, 2, 2.5 -> floor = 1, 1, 2, 2)
-            // Level 5: can cancel out 8 projectiles
+            // Level 5: can cancel out 5 projectiles (reduced from 8)
             if (weaponLevel >= 5) {
-                this.maxEnemyProjectiles = 8;
+                this.maxEnemyProjectiles = 5;
             } else {
                 this.maxEnemyProjectiles = Math.floor(1 + (weaponLevel - 1) * 0.5);
             }
@@ -3375,7 +3375,7 @@ class Weapon {
             const poolDamage = this.damage * (1 + this.level * 0.2);
             const poolDuration = this.poolDuration * (1 + this.level * 0.1);
             
-            // Calculate damage multiplier relative to base damage of 8
+            // Calculate damage multiplier relative to base damage of 8 (ovulation base damage)
             // This accounts for permanent damage bonuses and hidden vibe bonuses
             // Base damage without bonuses is 8, so multiplier = current damage / 8
             const damageMultiplier = this.damage / 8;
@@ -3577,9 +3577,11 @@ class Weapon {
                 return; // Exit early for Hitachi
         }
         
-        // Regular projectile weapons - find nearest enemy
+        // Regular projectile weapons - find nearest enemy (or projectile for buttplugs)
         let nearestEnemy = null;
+        let nearestProjectile = null;
         let nearestDistance = Infinity;
+        let nearestTargetType = null; // 'enemy' or 'projectile'
 
         // Check regular enemies
         for (const enemy of gameState.enemies) {
@@ -3590,6 +3592,7 @@ class Weapon {
             if (distance < nearestDistance) {
                 nearestDistance = distance;
                 nearestEnemy = enemy;
+                nearestTargetType = 'enemy';
             }
         }
         
@@ -3602,15 +3605,42 @@ class Weapon {
             if (distance < nearestDistance) {
                 nearestDistance = distance;
                 nearestEnemy = gameState.boss;
+                nearestTargetType = 'enemy';
+            }
+        }
+        
+        // For buttplugs, also check enemy projectiles and pick the closest target
+        if (this.type === 'buttplug') {
+            for (const enemyProj of gameState.enemyProjectiles) {
+                const dx = enemyProj.x - player.x;
+                const dy = enemyProj.y - player.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < nearestDistance) {
+                    nearestDistance = distance;
+                    nearestProjectile = enemyProj;
+                    nearestTargetType = 'projectile';
+                    nearestEnemy = null; // Clear enemy target if projectile is closer
+                }
             }
         }
 
-        if (nearestEnemy) {
-            const angle = Math.atan2(nearestEnemy.y - player.y, nearestEnemy.x - player.x);
+        // Calculate angle based on the closest target (enemy or projectile)
+        let targetX, targetY;
+        if (nearestTargetType === 'projectile' && nearestProjectile) {
+            targetX = nearestProjectile.x;
+            targetY = nearestProjectile.y;
+        } else if (nearestEnemy) {
+            targetX = nearestEnemy.x;
+            targetY = nearestEnemy.y;
+        }
+        
+        if (nearestEnemy || nearestProjectile) {
+            const angle = Math.atan2(targetY - player.y, targetX - player.x);
             
             // Buttplug special behavior at level 5
             if (this.type === 'buttplug' && this.level >= 5) {
-                // Level 5: 1 large projectile with 5x damage that can cancel 8 enemy projectiles (no piercing)
+                // Level 5: 1 large projectile with 5x damage that can cancel 5 enemy projectiles (no piercing, reduced from 8)
                 const projectileType = 'buttplug';
                 // Get attack size bonus for size multiplier
                 const bonuses = PermanentStats.getBonuses();
@@ -4527,108 +4557,83 @@ function updateUI() {
     // Don't call updateLogoDisplay() every frame - it causes flickering
     // Logo visibility is handled by CSS !important and explicit show on game start
 
-    // Update weapons list
+    // Update weapons list (cache sprite HTML to avoid repeated image loads)
     const weaponsList = document.getElementById('weaponsList');
-    weaponsList.innerHTML = '<div style="color: #4a90e2; font-weight: 600; margin-bottom: 5px;">Weapons:</div>';
+    const weaponsHeader = '<div style="color: #4a90e2; font-weight: 600; margin-bottom: 5px;">Weapons:</div>';
+    let weaponsHtml = weaponsHeader;
+    
+    // Cache sprite HTML strings
+    if (!gameState.weaponSpriteCache) {
+        gameState.weaponSpriteCache = {};
+    }
+    
     gameState.weapons.forEach(weapon => {
-        const item = document.createElement('div');
-        item.className = 'weapon-item';
-        
-        // Add weapon sprite
         const spriteName = `weapon-${weapon.type}`;
-        const spriteData = SpriteManager.getSprite(spriteName);
-        let spriteHtml = '';
-        if (spriteData && spriteData.image) {
-            spriteHtml = `<img src="${spriteData.image.src}" class="weapon-sprite-icon" alt="${weapon.name}">`;
+        
+        // Cache sprite HTML if not already cached
+        if (!gameState.weaponSpriteCache[spriteName]) {
+            const spriteData = SpriteManager.getSprite(spriteName);
+            if (spriteData && spriteData.image) {
+                gameState.weaponSpriteCache[spriteName] = `<img src="${spriteData.image.src}" class="weapon-sprite-icon" alt="${weapon.name}">`;
+            } else {
+                gameState.weaponSpriteCache[spriteName] = '';
+            }
         }
         
-        item.innerHTML = `${spriteHtml}<span>${weapon.name} Lv.${weapon.level}</span>`;
-        weaponsList.appendChild(item);
+        weaponsHtml += `<div class="weapon-item">${gameState.weaponSpriteCache[spriteName]}<span>${weapon.name} Lv.${weapon.level}</span></div>`;
     });
     
-    // Update upgrades list (separate from weapons)
+    weaponsList.innerHTML = weaponsHtml;
+    
+    // Update upgrades list (separate from weapons) - cache sprite HTML
     const upgradesList = document.getElementById('upgradesList');
-    upgradesList.innerHTML = '<div style="color: #ff6b9d; font-weight: 600; margin-bottom: 5px;">Upgrades:</div>';
+    const upgradesHeader = '<div style="color: #ff6b9d; font-weight: 600; margin-bottom: 5px;">Upgrades:</div>';
+    let upgradesHtml = upgradesHeader;
+    
+    // Cache upgrade sprite HTML strings
+    if (!gameState.upgradeSpriteCache) {
+        gameState.upgradeSpriteCache = {};
+    }
+    
+    // Helper function to get cached sprite HTML
+    const getCachedSpriteHtml = (spriteName, altText) => {
+        if (!gameState.upgradeSpriteCache[spriteName]) {
+            const spriteData = SpriteManager.getSprite(spriteName);
+            if (spriteData && spriteData.image) {
+                gameState.upgradeSpriteCache[spriteName] = `<img src="${spriteData.image.src}" class="weapon-sprite-icon" alt="${altText}">`;
+            } else {
+                gameState.upgradeSpriteCache[spriteName] = '';
+            }
+        }
+        return gameState.upgradeSpriteCache[spriteName];
+    };
     
     // Display Lube if owned
     if (gameState.lubeLevel > 0) {
-        const item = document.createElement('div');
-        item.className = 'weapon-item';
-        
-        // Add lube sprite
-        const spriteData = SpriteManager.getSprite('lube');
-        let spriteHtml = '';
-        if (spriteData && spriteData.image) {
-            spriteHtml = `<img src="${spriteData.image.src}" class="weapon-sprite-icon" alt="Lube">`;
-        }
-        
-        item.innerHTML = `${spriteHtml}<span>Lube Lv.${gameState.lubeLevel}</span>`;
-        upgradesList.appendChild(item);
+        upgradesHtml += `<div class="weapon-item">${getCachedSpriteHtml('lube', 'Lube')}<span>Lube Lv.${gameState.lubeLevel}</span></div>`;
     }
     
     // Display Chastity Cage if owned
     if (gameState.chastityCageLevel > 0) {
-        const item = document.createElement('div');
-        item.className = 'weapon-item';
-        
-        // Add chastity cage sprite
-        const spriteData = SpriteManager.getSprite('chastitycage');
-        let spriteHtml = '';
-        if (spriteData && spriteData.image) {
-            spriteHtml = `<img src="${spriteData.image.src}" class="weapon-sprite-icon" alt="Chastity Cage">`;
-        }
-        
-        item.innerHTML = `${spriteHtml}<span>Chastity Cage Lv.${gameState.chastityCageLevel}</span>`;
-        upgradesList.appendChild(item);
+        upgradesHtml += `<div class="weapon-item">${getCachedSpriteHtml('chastitycage', 'Chastity Cage')}<span>Chastity Cage Lv.${gameState.chastityCageLevel}</span></div>`;
     }
     
     // Display Hidden Vibe if owned
     if (gameState.hiddenVibeLevel > 0) {
-        const item = document.createElement('div');
-        item.className = 'weapon-item';
-        
-        // Add hidden vibe sprite
-        const spriteData = SpriteManager.getSprite('hiddenvibe');
-        let spriteHtml = '';
-        if (spriteData && spriteData.image) {
-            spriteHtml = `<img src="${spriteData.image.src}" class="weapon-sprite-icon" alt="Hidden Vibe">`;
-        }
-        
-        item.innerHTML = `${spriteHtml}<span>Hidden Vibe (Endless)</span>`;
-        upgradesList.appendChild(item);
+        upgradesHtml += `<div class="weapon-item">${getCachedSpriteHtml('hiddenvibe', 'Hidden Vibe')}<span>Hidden Vibe (Endless)</span></div>`;
     }
     
     // Display Cock Ring if owned
     if (gameState.cockRingLevel > 0) {
-        const item = document.createElement('div');
-        item.className = 'weapon-item';
-        
-        // Add cock ring sprite
-        const spriteData = SpriteManager.getSprite('cockring');
-        let spriteHtml = '';
-        if (spriteData && spriteData.image) {
-            spriteHtml = `<img src="${spriteData.image.src}" class="weapon-sprite-icon" alt="Cock Ring">`;
-        }
-        
-        item.innerHTML = `${spriteHtml}<span>Cock Ring Lv.${gameState.cockRingLevel}</span>`;
-        upgradesList.appendChild(item);
+        upgradesHtml += `<div class="weapon-item">${getCachedSpriteHtml('cockring', 'Cock Ring')}<span>Cock Ring Lv.${gameState.cockRingLevel}</span></div>`;
     }
     
     // Display Crotchless Panties if owned
     if (gameState.pantiesLevel > 0) {
-        const item = document.createElement('div');
-        item.className = 'weapon-item';
-        
-        // Add crotchless panties sprite
-        const spriteData = SpriteManager.getSprite('panties');
-        let spriteHtml = '';
-        if (spriteData && spriteData.image) {
-            spriteHtml = `<img src="${spriteData.image.src}" class="weapon-sprite-icon" alt="Crotchless Panties">`;
-        }
-        
-        item.innerHTML = `${spriteHtml}<span>Crotchless Panties (Endless)</span>`;
-        upgradesList.appendChild(item);
+        upgradesHtml += `<div class="weapon-item">${getCachedSpriteHtml('panties', 'Crotchless Panties')}<span>Crotchless Panties (Endless)</span></div>`;
     }
+    
+    upgradesList.innerHTML = upgradesHtml;
 }
 
 function updateWeaponsAboutList() {
