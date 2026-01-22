@@ -3566,11 +3566,13 @@ class Weapon {
                 const lifetime = this.level >= 5 ? 5000 : 2000;
                 // Get attack size bonus for size multiplier
                 const bonuses = PermanentStats.getBonuses();
+                // Scale speed proportionally with size so larger buttplugs don't appear slower
+                const scaledSpeed = this.projectileSpeed * bonuses.attackSize;
                 const projectile = new Projectile(
                     player.x,
                     player.y,
                     angle,
-                    this.projectileSpeed,
+                    scaledSpeed,
                     this.damage * (1 + this.level * 0.2),
                     projectileType,
                     false, // No piercing
@@ -3956,17 +3958,22 @@ function showUpgradeSelection() {
             }
         }
         
-        // Add checkbox for auto-upgrade if this is panties or damage and only panties/damage are available
-        let checkboxHtml = '';
+        // Add clickable area for auto-upgrade if this is panties or damage and only panties/damage are available
+        let autoUpgradeHtml = '';
         if (onlyPantiesAndDamage && (upgrade.type === 'panties' || upgrade.type === 'damage')) {
-            const isChecked = (upgrade.type === 'panties' && gameState.autoUpgradePanties) ||
+            const isSelected = (upgrade.type === 'panties' && gameState.autoUpgradePanties) ||
                              (upgrade.type === 'damage' && gameState.autoUpgradeDamage);
-            checkboxHtml = `
-                <label class="auto-upgrade-checkbox" onclick="event.stopPropagation();">
-                    <input type="checkbox" ${isChecked ? 'checked' : ''} 
-                           onchange="gameState.autoUpgrade${upgrade.type === 'panties' ? 'Panties' : 'Damage'} = this.checked;">
-                    <span>Select this every time</span>
-                </label>
+            const upgradeTypeName = upgrade.type === 'panties' ? 'Panties' : 'Damage';
+            autoUpgradeHtml = `
+                <div class="auto-upgrade-button ${isSelected ? 'selected' : ''}" 
+                     onclick="event.stopPropagation(); 
+                              if (confirm('Set this upgrade to auto-select every time? This will disable auto-select for the other option.')) {
+                                  gameState.autoUpgradePanties = ${upgrade.type === 'panties' ? 'true' : 'false'};
+                                  gameState.autoUpgradeDamage = ${upgrade.type === 'damage' ? 'true' : 'false'};
+                                  showUpgradeSelection();
+                              }">
+                    <span>${isSelected ? '✓ ' : ''}Select this every time</span>
+                </div>
             `;
         }
         
@@ -3975,7 +3982,7 @@ function showUpgradeSelection() {
             <div class="upgrade-text">
                 <h3>${nameText}</h3>
                 <p>${descriptionText}</p>
-                ${checkboxHtml}
+                ${autoUpgradeHtml}
             </div>
         `;
         option.onclick = () => selectUpgrade(upgrade);
@@ -4365,7 +4372,15 @@ function gameLoop(currentTime) {
 
     // Update projectiles
     gameState.projectiles = gameState.projectiles.filter(proj => proj.update(deltaTime));
-    gameState.projectiles.forEach(proj => proj.draw(CONFIG.ctx));
+    // Sort projectiles by type to ensure hitachi renders above buttplugs (higher z-index)
+    const sortedProjectiles = [...gameState.projectiles].sort((a, b) => {
+        // Hitachi projectiles should be drawn last (highest z-index)
+        if (a.type === 'hitachi' && b.type !== 'hitachi') return 1;
+        if (a.type !== 'hitachi' && b.type === 'hitachi') return -1;
+        // Otherwise maintain original order
+        return 0;
+    });
+    sortedProjectiles.forEach(proj => proj.draw(CONFIG.ctx));
 
     // Update enemy projectiles
     gameState.enemyProjectiles = gameState.enemyProjectiles.filter(proj => proj.update(deltaTime));
