@@ -46,7 +46,9 @@ const gameState = {
     tabHiddenTime: null, // Track when tab was hidden (for pausing timer)
     totalPausedTime: 0, // Total time the tab was hidden (in milliseconds)
     hardMode: false, // Hard mode flag (doubles enemy stats, halves permanent bonuses)
-    score: 0 // Current game score
+    score: 0, // Current game score
+    endlessMode: false, // Endless mode flag (infinite scaling difficulty)
+    endlessDifficultyLevel: 0 // Difficulty level in endless mode (increases every 30 seconds)
 };
 
 // Permanent Stats Manager (persists after death)
@@ -218,7 +220,9 @@ const MusicManager = {
         boss: null,
         bossSpoken: null, // Boss spoken audio
         gameOver: null,
-        win: null
+        win: null,
+        hardEndlessStart: null, // Song that plays when hard/endless mode starts (does not loop)
+        hardEndlessGameOver: null // Game over music for hard/endless mode
     },
     
     // Initialize music tracks
@@ -315,6 +319,24 @@ const MusicManager = {
         this.tracks.win.loop = true;
         this.tracks.win.volume = this.volume;
         this.tracks.win.preload = 'auto';
+        
+        // Hard/Endless mode start song (does not loop, transitions to gameplay when done)
+        this.tracks.hardEndlessStart = new Audio('music/hard-endless-start.mp3');
+        this.tracks.hardEndlessStart.loop = false; // Don't loop - transition to gameplay
+        this.tracks.hardEndlessStart.volume = this.volume;
+        this.tracks.hardEndlessStart.preload = 'auto';
+        // When start song ends, transition to gameplay music
+        this.tracks.hardEndlessStart.addEventListener('ended', () => {
+            if (this.currentTrack === this.tracks.hardEndlessStart) {
+                this.playGameplay();
+            }
+        });
+        
+        // Hard/Endless mode game over song
+        this.tracks.hardEndlessGameOver = new Audio('music/hard-endless-gameover.mp3');
+        this.tracks.hardEndlessGameOver.loop = true;
+        this.tracks.hardEndlessGameOver.volume = this.volume;
+        this.tracks.hardEndlessGameOver.preload = 'auto';
         
         console.log(`Music initialized. Gameplay songs loaded: ${this.tracks.gameplay.length}`);
         if (this.tracks.gameplay.length === 0) {
@@ -510,6 +532,54 @@ const MusicManager = {
         }
     },
     
+    // Play hard/endless mode start song (transitions to gameplay when done)
+    playHardEndlessStart() {
+        if (this.muted) return; // Don't play if muted
+        
+        this.stop();
+        this.currentTrack = this.tracks.hardEndlessStart;
+        if (this.currentTrack) {
+            this.currentTrack.currentTime = 0;
+            const playPromise = this.currentTrack.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    console.log('Playing hard/endless mode start music');
+                }).catch(e => {
+                    console.warn('Could not play hard/endless start music:', e);
+                    // If start song fails, just play gameplay music
+                    this.playGameplay();
+                });
+            }
+        } else {
+            // If track not loaded, just play gameplay music
+            this.playGameplay();
+        }
+    },
+    
+    // Play hard/endless mode game over music
+    playHardEndlessGameOver() {
+        if (this.muted) return; // Don't play if muted
+        
+        this.stop();
+        this.currentTrack = this.tracks.hardEndlessGameOver;
+        if (this.currentTrack) {
+            this.currentTrack.currentTime = 0;
+            const playPromise = this.currentTrack.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    console.log('Playing hard/endless mode game over music');
+                }).catch(e => {
+                    console.warn('Could not play hard/endless game over music:', e);
+                    // Fallback to regular game over music
+                    this.playGameOver();
+                });
+            }
+        } else {
+            // If track not loaded, fallback to regular game over music
+            this.playGameOver();
+        }
+    },
+    
     // Add gameplay song to the array
     addGameplaySong(path) {
         try {
@@ -531,7 +601,7 @@ const MusicManager = {
         }
     },
     
-    // Set volume (0.0 to 1.0)
+        // Set volume (0.0 to 1.0)
     setVolume(volume) {
         this.volume = Math.max(0, Math.min(1, volume));
         // Update all existing tracks
@@ -540,6 +610,8 @@ const MusicManager = {
         if (this.tracks.bossSpoken) this.tracks.bossSpoken.volume = this.volume;
         if (this.tracks.gameOver) this.tracks.gameOver.volume = this.volume;
         if (this.tracks.win) this.tracks.win.volume = this.volume;
+        if (this.tracks.hardEndlessStart) this.tracks.hardEndlessStart.volume = this.volume;
+        if (this.tracks.hardEndlessGameOver) this.tracks.hardEndlessGameOver.volume = this.volume;
         this.tracks.gameplay.forEach(track => {
             if (track) track.volume = this.volume;
         });
@@ -583,12 +655,6 @@ function playerWins() {
     document.getElementById('winScore').textContent = gameState.score.toLocaleString();
     // Clear hint text for win modal (no hints on victory!)
     document.getElementById('winHint').textContent = '';
-    
-    // Show/hide hard mode button based on whether player has won before
-    const hardModeButton = document.getElementById('hardModeButton');
-    if (hardModeButton) {
-        hardModeButton.style.display = PermanentStats.hasWon ? 'block' : 'none';
-    }
     
     // Show win modal
     document.getElementById('winModal').classList.add('active');
@@ -1647,6 +1713,9 @@ class Enemy {
             this.isElite = true;
         }
         
+        // Store base XP value before any modifiers (for scoring)
+        let baseXpValue;
+        
         if (type === 'bills') {
             this.radius = 20 * CONFIG.scaleFactor;
             this.baseSpeed = 10; // pixels per second (scaled) - doubled from 5
@@ -1654,7 +1723,8 @@ class Enemy {
             this.health = 20; // Doubled from 10
             this.maxHealth = 20; // Doubled from 10
             this.color = '#666666';
-            this.xpValue = 1;
+            baseXpValue = 1;
+            this.xpValue = baseXpValue;
             this.damage = 5; // Contact damage
             this.difficulty = 1;
         } else if (type === 'incels') {
@@ -1664,7 +1734,8 @@ class Enemy {
             this.health = 100; // Doubled from 50
             this.maxHealth = 100; // Doubled from 50
             this.color = '#aaaaaa';
-            this.xpValue = 2;
+            baseXpValue = 2;
+            this.xpValue = baseXpValue;
             this.damage = 0; // No contact damage, uses projectiles
             this.difficulty = 2;
             this.shootCooldown = 2000; // Shoot every 2 seconds
@@ -1676,7 +1747,8 @@ class Enemy {
             this.health = 600; // Tripled from 200
             this.maxHealth = 600; // Tripled from 200
             this.color = '#8b0000';
-            this.xpValue = 3;
+            baseXpValue = 3;
+            this.xpValue = baseXpValue;
             this.damage = 40; // Body contact damage
             this.difficulty = 3;
             this.state = 'idle'; // 'idle', 'pulsing', 'charging', 'attacking'
@@ -1697,9 +1769,23 @@ class Enemy {
             this.health = 20; // Doubled from 10
             this.maxHealth = 20; // Doubled from 10
             this.color = '#666666';
-            this.xpValue = 1;
+            baseXpValue = 1;
+            this.xpValue = baseXpValue;
             this.damage = 5;
             this.difficulty = 1;
+        }
+        
+        // Apply endless mode difficulty scaling to BASE XP FIRST (before other multipliers)
+        // This ensures base XP scales with difficulty, affecting scoring
+        if (gameState.endlessMode && gameState.endlessDifficultyLevel > 0) {
+            const endlessMultiplier = 1 + (gameState.endlessDifficultyLevel * 0.1);
+            baseXpValue = Math.floor(baseXpValue * endlessMultiplier);
+        }
+        
+        // Apply hard mode to BASE XP (before elite multipliers)
+        // This ensures hard mode doubles base XP, which then gets multiplied by elite bonuses
+        if (gameState.hardMode) {
+            baseXpValue *= 2;
         }
         
         // Apply elite bonuses if this enemy is elite
@@ -1728,7 +1814,8 @@ class Enemy {
             this.speed = this.baseSpeed;
             this.health = (this.health * hpMultiplier) + hpBonus; // Double HP + bonus
             this.maxHealth = (this.maxHealth * hpMultiplier) + hpBonus; // Double max HP + bonus
-            this.xpValue *= xpMultiplier;
+            // Apply elite XP multiplier to the (already endless/hard mode scaled) base XP
+            this.xpValue = baseXpValue * xpMultiplier;
             // Half/quarter attack cooldown (for incels/politicians)
             if (this.shootCooldown) {
                 this.shootCooldown /= cooldownDivisor;
@@ -1750,20 +1837,44 @@ class Enemy {
             this.maxHealth = Math.floor(this.maxHealth * hpMultiplier);
         }
         
-        // Double all enemy stats in hard mode (after all other calculations)
+        // Double all enemy stats in hard mode (XP already doubled above, before elite multipliers)
         if (gameState.hardMode) {
             this.radius *= 2;
             this.baseSpeed *= 2;
             this.speed = this.baseSpeed;
             this.health *= 2;
             this.maxHealth *= 2;
-            this.xpValue *= 2;
+            // XP was already doubled above before elite multipliers
             this.damage *= 2;
             if (this.shootCooldown) {
                 this.shootCooldown /= 2; // Half cooldown = faster attacks
             }
             if (this.maxChargeDistance) {
                 this.maxChargeDistance *= 2;
+            }
+        }
+        
+        // If not elite, set xpValue to the scaled base (endless/hard mode already applied)
+        if (!this.isElite) {
+            this.xpValue = baseXpValue;
+        }
+        
+        // Apply endless mode difficulty scaling to other stats (XP already scaled above)
+        if (gameState.endlessMode && gameState.endlessDifficultyLevel > 0) {
+            // Each difficulty level increases stats by 10% (multiplicative)
+            const endlessMultiplier = 1 + (gameState.endlessDifficultyLevel * 0.1);
+            this.radius *= endlessMultiplier;
+            this.baseSpeed *= endlessMultiplier;
+            this.speed = this.baseSpeed;
+            this.health = Math.floor(this.health * endlessMultiplier);
+            this.maxHealth = Math.floor(this.maxHealth * endlessMultiplier);
+            // XP was already scaled above before elite multipliers
+            this.damage = Math.floor(this.damage * endlessMultiplier);
+            if (this.shootCooldown) {
+                this.shootCooldown /= endlessMultiplier; // Faster attacks
+            }
+            if (this.maxChargeDistance) {
+                this.maxChargeDistance *= endlessMultiplier;
             }
         }
         
@@ -2729,7 +2840,10 @@ class Projectile {
             let hitRadius = this.radius;
             if (this.type === 'hitachi') {
                 const baseSize = 32 * 0.3;
-                const sizeMultiplier = 1 + (this.weaponLevel - 1) * 0.1;
+                const levelMultiplier = 1 + (this.weaponLevel - 1) * 0.1;
+                // Apply attack size bonus from permanent stats
+                const bonuses = PermanentStats.getBonuses();
+                const sizeMultiplier = levelMultiplier * bonuses.attackSize;
                 const spriteSize = baseSize * sizeMultiplier;
                 hitRadius = spriteSize / 2;
             } else if (this.type === 'buttplug') {
@@ -2805,7 +2919,10 @@ class Projectile {
                 const sprite = spriteData.image;
                 // Base size is 30% of original 32px, then grows 10% per level
                 const baseSize = 32 * 0.3; // 9.6
-                const sizeMultiplier = 1 + (this.weaponLevel - 1) * 0.1; // +10% per level
+                const levelMultiplier = 1 + (this.weaponLevel - 1) * 0.1; // +10% per level
+                // Apply attack size bonus from permanent stats
+                const bonuses = PermanentStats.getBonuses();
+                const sizeMultiplier = levelMultiplier * bonuses.attackSize;
                 const spriteSize = baseSize * sizeMultiplier;
                 
                 ctx.translate(this.x, this.y);
@@ -3335,6 +3452,8 @@ class Weapon {
                                 const currentAngle = Math.atan2(currentTargetEnemy.y - player.y, currentTargetEnemy.x - player.x);
                                 // Hitachi lifetime: 1 second base + 1 second per level (doubled travel distance)
                                 const hitachiLifetime = 1000 + (this.level * 1000); // 1000ms base + 1000ms per level
+                                // Get attack size bonus for size multiplier
+                                const bonuses = PermanentStats.getBonuses();
                                 const projectile = new Projectile(
                                     player.x,
                                     player.y,
@@ -3343,7 +3462,7 @@ class Weapon {
                                     this.damage * 0.5, // 50% damage
                                     'hitachi',
                                     false, // No piercing
-                                    1.0,   // Normal size
+                                    bonuses.attackSize,   // Apply attack size bonus to size multiplier
                                     0.25,  // 25% opacity (reduced by 50% from 50%)
                                     hitachiLifetime,
                                     this.level // Weapon level for size scaling
@@ -3364,6 +3483,8 @@ class Weapon {
                                 const currentAngle = Math.atan2(currentTargetEnemy.y - player.y, currentTargetEnemy.x - player.x);
                                 // Hitachi lifetime: 1 second base + 1 second per level (doubled travel distance)
                                 const hitachiLifetime = 1000 + (this.level * 1000); // 1000ms base + 1000ms per level
+                                // Get attack size bonus for size multiplier
+                                const bonuses = PermanentStats.getBonuses();
                                 const projectile = new Projectile(
                                     player.x,
                                     player.y,
@@ -3372,7 +3493,7 @@ class Weapon {
                                     this.damage * (1 + this.level * 0.2),
                                     'hitachi',
                                     false, // No piercing
-                                    1.0,   // Normal size
+                                    bonuses.attackSize,   // Apply attack size bonus to size multiplier
                                     0.5,   // 50% opacity (reduced by 50% from 100%)
                                     hitachiLifetime,
                                     this.level // Weapon level for size scaling
@@ -3420,6 +3541,8 @@ class Weapon {
             if (this.type === 'buttplug' && this.level >= 5) {
                 // Level 5: 1 large piercing projectile with 5x damage (one per cooldown, no bursts)
                 const projectileType = 'buttplug';
+                // Get attack size bonus for size multiplier
+                const bonuses = PermanentStats.getBonuses();
                 const projectile = new Projectile(
                     player.x,
                     player.y,
@@ -3428,7 +3551,7 @@ class Weapon {
                     this.damage * 5, // 5x damage
                     projectileType,
                     true, // Pierce through enemies
-                    5.0,  // 500% size (5x)
+                    5.0 * bonuses.attackSize,  // 500% size (5x) * attack size bonus
                     1.0,  // Full opacity
                     2000, // Lifetime
                     this.level // Weapon level for enemy projectile absorption
@@ -3439,6 +3562,8 @@ class Weapon {
                 const projectileType = 'buttplug';
                 // Level 5 gets 5 seconds, others get 2 seconds
                 const lifetime = this.level >= 5 ? 5000 : 2000;
+                // Get attack size bonus for size multiplier
+                const bonuses = PermanentStats.getBonuses();
                 const projectile = new Projectile(
                     player.x,
                     player.y,
@@ -3447,7 +3572,7 @@ class Weapon {
                     this.damage * (1 + this.level * 0.2),
                     projectileType,
                     false, // No piercing
-                    1.0,   // Normal size
+                    bonuses.attackSize,   // Apply attack size bonus to size multiplier
                     1.0,   // Full opacity
                     lifetime,  // Lifetime: 2 seconds (levels 1-4), 5 seconds (level 5)
                     this.level // Weapon level for enemy projectile absorption
@@ -3578,16 +3703,28 @@ function spawnEnemy() {
     // Late game: 180+ seconds (3+ minutes)
     // Three enemy types: Bills (difficulty 1), Incels (difficulty 2), Politicians (difficulty 3)
     // Incels don't appear until 60 seconds (1 minute)
+    // In endless mode, treat time as 180+ (late game) for enemy type selection
     let type = 'bills'; // Default to Bills
-    const time = CONFIG.gameTime;
+    const time = gameState.endlessMode ? Math.max(180, CONFIG.gameTime) : CONFIG.gameTime;
     const rand = Math.random();
     
     // Use difficulty-based spawning with new time thresholds
     if (time >= 180) {
         // Late game (3+ minutes): all types possible, more difficult enemies
-        if (rand < 0.25) type = 'politicians'; // Difficulty 3
-        else if (rand < 0.50) type = 'incels'; // Difficulty 2
-        else type = 'bills'; // Difficulty 1
+        // In endless mode, increase politician spawn chance as difficulty increases
+        if (gameState.endlessMode && gameState.endlessDifficultyLevel > 0) {
+            // More difficult enemies spawn more often as endless mode progresses
+            const politicianChance = Math.min(0.5, 0.25 + (gameState.endlessDifficultyLevel * 0.01)); // Up to 50%
+            const incelChance = Math.min(0.4, 0.25 + (gameState.endlessDifficultyLevel * 0.005)); // Up to 40%
+            if (rand < politicianChance) type = 'politicians'; // Difficulty 3
+            else if (rand < politicianChance + incelChance) type = 'incels'; // Difficulty 2
+            else type = 'bills'; // Difficulty 1
+        } else {
+            // Normal late game spawning
+            if (rand < 0.25) type = 'politicians'; // Difficulty 3
+            else if (rand < 0.50) type = 'incels'; // Difficulty 2
+            else type = 'bills'; // Difficulty 1
+        }
     } else if (time >= 90) {
         // Mid game (1.5-3 minutes): bills and incels (incels can spawn after 60 seconds)
         if (rand < 0.30) type = 'incels'; // Difficulty 2
@@ -3992,8 +4129,8 @@ function gameLoop(currentTime) {
         CONFIG.gameTime = Math.floor(elapsedTime / 1000);
     }
     
-    // Check for boss spawn at 5 minutes (300 seconds)
-    if (CONFIG.gameTime >= 300 && !gameState.bossSpawned) {
+    // Check for boss spawn at 5 minutes (300 seconds) - but not in endless mode
+    if (CONFIG.gameTime >= 300 && !gameState.bossSpawned && !gameState.endlessMode) {
         gameState.bossSpawned = true;
         
         // Clear all enemies
@@ -4080,13 +4217,26 @@ function gameLoop(currentTime) {
     // Draw experience orbs (second lowest z-index)
     gameState.experienceOrbs.forEach(orb => orb.draw(CONFIG.ctx));
 
-    // Spawn enemies (only if boss hasn't spawned)
-    if (!gameState.bossSpawned) {
-        // Base spawn rate increases every 20 seconds (difficulty scaling)
-        // Every 20 seconds, spawn rate gets faster (lower number = faster spawning)
-        // Cap hits at 240 seconds (reaches minimum spawn rate of 30)
-        const difficultyLevel = Math.floor(CONFIG.gameTime / 20); // Increases every 20 seconds
-        const baseSpawnRate = Math.max(30, 120 - (difficultyLevel * 7.5)); // Decrease by 7.5 every 20 seconds to cap at 240s
+    // Spawn enemies (only if boss hasn't spawned, or in endless mode)
+    if (!gameState.bossSpawned || gameState.endlessMode) {
+        let difficultyLevel;
+        let baseSpawnRate;
+        
+        if (gameState.endlessMode) {
+            // Endless mode: difficulty increases every 30 seconds, no cap
+            // Calculate difficulty based on time since entering endless mode (after 300 seconds)
+            const endlessTime = CONFIG.gameTime - 300; // Time in endless mode
+            gameState.endlessDifficultyLevel = Math.floor(endlessTime / 30); // Increases every 30 seconds
+            difficultyLevel = gameState.endlessDifficultyLevel;
+            // Spawn rate continues to decrease (faster spawning) - no cap
+            baseSpawnRate = Math.max(10, 30 - (difficultyLevel * 1.0)); // Continue decreasing, minimum 10
+        } else {
+            // Normal mode: Base spawn rate increases every 20 seconds (difficulty scaling)
+            // Every 20 seconds, spawn rate gets faster (lower number = faster spawning)
+            // Cap hits at 240 seconds (reaches minimum spawn rate of 30)
+            difficultyLevel = Math.floor(CONFIG.gameTime / 20); // Increases every 20 seconds
+            baseSpawnRate = Math.max(30, 120 - (difficultyLevel * 7.5)); // Decrease by 7.5 every 20 seconds to cap at 240s
+        }
         
         let spawnRate = baseSpawnRate;
         
@@ -4162,15 +4312,24 @@ function updateUI() {
     document.getElementById('maxHealth').textContent = gameState.player.maxHealth;
     
     // Update timer: countdown from 5 minutes (300 seconds), formatted as MM:SS
-    // Stop visual timer when boss appears
-    if (!gameState.bossSpawned) {
-        const countdownSeconds = Math.max(0, 300 - CONFIG.gameTime);
-        const minutes = Math.floor(countdownSeconds / 60);
-        const seconds = countdownSeconds % 60;
-        const formattedTime = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+    // In endless mode, count up with "(Endless)" notation
+    if (gameState.endlessMode) {
+        const totalSeconds = CONFIG.gameTime;
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        const formattedTime = `${minutes}:${seconds.toString().padStart(2, '0')} (Endless)`;
         document.getElementById('time').textContent = formattedTime;
+    } else {
+        // Stop visual timer when boss appears
+        if (!gameState.bossSpawned) {
+            const countdownSeconds = Math.max(0, 300 - CONFIG.gameTime);
+            const minutes = Math.floor(countdownSeconds / 60);
+            const seconds = countdownSeconds % 60;
+            const formattedTime = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+            document.getElementById('time').textContent = formattedTime;
+        }
+        // If boss has spawned, timer stays at the value it was when boss appeared (don't update)
     }
-    // If boss has spawned, timer stays at the value it was when boss appeared (don't update)
     
     // Update current score
     document.getElementById('currentScore').textContent = gameState.score.toLocaleString();
@@ -4483,7 +4642,12 @@ function gameOver() {
     document.getElementById('finalScore').textContent = gameState.score.toLocaleString();
     document.getElementById('gameOverHint').textContent = getRandomHint();
     document.getElementById('gameOverModal').classList.add('active');
-    MusicManager.playGameOver();
+    // Play appropriate game over music based on mode
+    if (gameState.hardMode || gameState.endlessMode) {
+        MusicManager.playHardEndlessGameOver();
+    } else {
+        MusicManager.playGameOver();
+    }
     
     // Save permanent stats: add levels gained this session
     const levelsGained = gameState.level - gameState.startLevel;
@@ -4523,6 +4687,8 @@ function restartGame() {
     gameState.totalPausedTime = 0; // Reset total paused time
     gameState.hardMode = wasHardMode; // Preserve hard mode
     gameState.score = 0; // Reset score
+    gameState.endlessMode = false; // Reset endless mode
+    gameState.endlessDifficultyLevel = 0; // Reset endless difficulty
     
     // Initialize rerolls: 3 base + 0.1 per permanent level
     const permanentLevels = PermanentStats.totalLevelsGained;
@@ -4549,9 +4715,15 @@ function retryGame() {
 
 function returnToMainMenu() {
     gameState.hardMode = false; // Reset hard mode when returning to menu
+    gameState.endlessMode = false; // Reset endless mode when returning to menu
     restartGame();
     // Update highest score display
     updateHighestScoreDisplay();
+    // Show/hide hard mode button based on whether player has won before
+    const hardModeButton = document.getElementById('hardModeButton');
+    if (hardModeButton) {
+        hardModeButton.style.display = PermanentStats.hasWon ? 'block' : 'none';
+    }
     // Show start menu
     const startScreen = document.getElementById('startScreen');
     startScreen.classList.add('active');
@@ -4823,27 +4995,70 @@ async function initGame() {
         returnToMainMenu();
     });
     
-    // Hard mode button (starts game in hard mode)
+    // Hard mode button (starts new game in hard mode from main menu)
     document.getElementById('hardModeButton').addEventListener('click', () => {
         gameState.hardMode = true;
-        document.getElementById('winModal').classList.remove('active');
+        gameState.endlessMode = false; // Reset endless mode
+        gameState.endlessDifficultyLevel = 0; // Reset endless difficulty
         document.getElementById('startScreen').classList.remove('active');
         gameState.startTime = Date.now();
         gameState.tabHiddenTime = null;
         gameState.totalPausedTime = 0;
-        gameState.startLevel = gameState.level;
+        gameState.startLevel = 1; // Start from level 1
+        gameState.score = 0; // Reset score
+        
+        // Reset game state for new game
+        gameState.player = new Player(CONFIG.width / 2, CONFIG.height / 2);
+        gameState.enemies = [];
+        gameState.projectiles = [];
+        gameState.enemyProjectiles = [];
+        gameState.experienceOrbs = [];
+        gameState.damagePools = [];
+        gameState.strikes = [];
+        gameState.collarAuras = [];
+        gameState.boss = null;
+        gameState.bossSpawned = false;
+        gameState.chastityCageLevel = 0;
+        gameState.lubeLevel = 0;
+        gameState.hiddenVibeLevel = 0;
+        gameState.cockRingLevel = 0;
+        gameState.pantiesLevel = 0;
+        gameState.weapons = [new Weapon('buttplug')];
+        gameState.level = 1;
+        gameState.xp = 0;
+        gameState.xpNeeded = 10;
         
         // Initialize rerolls: 3 base + 0.05 per permanent level (halved)
         const permanentLevels = PermanentStats.totalLevelsGained;
         gameState.rerolls = 3 + (permanentLevels * 0.05);
+        
+        CONFIG.gameTime = 0;
+        CONFIG.isPaused = false;
+        CONFIG.isGameOver = false;
+        
         console.log('Hard mode game started!');
         if (!gameState.player) {
             console.error('ERROR: Player not initialized!');
         }
-        // Play gameplay music when game starts
+        // Play hard mode start song (will transition to gameplay when done)
         setTimeout(() => {
-            MusicManager.playGameplay();
+            MusicManager.playHardEndlessStart();
         }, 100);
+        requestAnimationFrame(gameLoop);
+    });
+    
+    // Endless mode button (continues game in endless mode)
+    document.getElementById('endlessModeButton').addEventListener('click', () => {
+        gameState.endlessMode = true;
+        gameState.endlessDifficultyLevel = 0; // Reset difficulty level
+        gameState.boss = null; // Remove boss
+        gameState.bossSpawned = false; // Allow enemy spawning to continue
+        document.getElementById('winModal').classList.remove('active');
+        CONFIG.isGameOver = false; // Resume game
+        console.log('Endless mode activated!');
+        // Play endless mode start song (will transition to gameplay when done)
+        MusicManager.playHardEndlessStart();
+        // Continue gameplay - game loop is already running
         requestAnimationFrame(gameLoop);
     });
     
@@ -4852,6 +5067,12 @@ async function initGame() {
     updatePermanentStatsUI();
     updateLogoDisplay();
     updateHighestScoreDisplay();
+    
+    // Show/hide hard mode button based on whether player has won before
+    const hardModeButton = document.getElementById('hardModeButton');
+    if (hardModeButton) {
+        hardModeButton.style.display = PermanentStats.hasWon ? 'block' : 'none';
+    }
     
     // Start the game loop (it will pause when challenge modal is active)
     requestAnimationFrame(gameLoop);
