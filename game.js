@@ -4172,6 +4172,9 @@ function updateUI() {
     }
     // If boss has spawned, timer stays at the value it was when boss appeared (don't update)
     
+    // Update current score
+    document.getElementById('currentScore').textContent = gameState.score.toLocaleString();
+    
     // Update permanent stats display
     updatePermanentStatsUI();
     
@@ -4439,6 +4442,10 @@ function updatePermanentStatsUI() {
         <div style="margin-bottom: 8px; font-size: 12px;">
             <div style="color: #aaa; margin-bottom: 2px;">Attack Size:</div>
             <div style="color: #9b59b6;">+${attackSizePercent}%</div>
+        </div>
+        <div style="margin-bottom: 8px; font-size: 12px; margin-top: 12px; border-top: 1px solid #4a4a6a; padding-top: 8px;">
+            <div style="color: #aaa; margin-bottom: 2px;">Highest Score:</div>
+            <div style="color: #ffd700; font-weight: 600;">${PermanentStats.highestScore.toLocaleString()}</div>
         </div>
     `;
 }
