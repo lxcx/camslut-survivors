@@ -66,6 +66,18 @@ body {
     filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.8));
 }
 
+.yellow-flash-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(255, 255, 0, 0);
+    pointer-events: none;
+    z-index: 200;
+    transition: background 0.25s ease-out;
+}
+
 .stats {
     display: flex;
     gap: 20px;

@@ -50,7 +50,9 @@ const gameState = {
     hardMode: false, // Hard mode flag (doubles enemy stats, halves permanent bonuses)
     score: 0, // Current game score
     endlessMode: false, // Endless mode flag (infinite scaling difficulty)
-    endlessDifficultyLevel: 0 // Difficulty level in endless mode (increases every 30 seconds)
+    endlessDifficultyLevel: 0, // Difficulty level in endless mode (increases every 30 seconds)
+    weaponsDisabled: false, // Flag to disable weapons (not items)
+    weaponsDisabledUntil: 0 // Timestamp when weapons are re-enabled
 };
 
 // Permanent Stats Manager (persists after death)
@@ -214,6 +216,7 @@ const MusicManager = {
     currentTrack: null,
     volume: 0.125, // 12.5% volume (50% of 25%)
     muted: false, // Mute state
+    lastGameplaySong: null, // Track last gameplay song played (to avoid repeating on new game)
     
     // Music tracks
     tracks: {
@@ -406,7 +409,7 @@ const MusicManager = {
         });
         
         if (validGameplayTracks.length > 0) {
-            // Pick a random track, but avoid playing the same one that just ended
+            // Pick a random track, but avoid playing the same one that just ended or the last song from previous game
             let randomIndex;
             let attempts = 0;
             do {
@@ -414,9 +417,13 @@ const MusicManager = {
                 attempts++;
                 // Prevent infinite loop if there's only one track
                 if (attempts > 10 || validGameplayTracks.length === 1) break;
-            } while (validGameplayTracks[randomIndex] === this.currentTrack && validGameplayTracks.length > 1);
+            } while ((validGameplayTracks[randomIndex] === this.currentTrack || 
+                     validGameplayTracks[randomIndex] === this.lastGameplaySong) && 
+                     validGameplayTracks.length > 1);
             
             this.currentTrack = validGameplayTracks[randomIndex];
+            // Update last gameplay song for next game
+            this.lastGameplaySong = this.currentTrack;
             if (this.currentTrack) {
                 // Reset to beginning
                 this.currentTrack.currentTime = 0;
@@ -623,6 +630,28 @@ const MusicManager = {
 // Helper functions for boss and win music (call these when boss fights start or player wins)
 function startBossFight() {
     MusicManager.playBoss();
+}
+
+function triggerBossInvincibilityFlash() {
+    // Play player damage sound
+    SoundEffects.play('playerDamage');
+    
+    // Disable weapons for 5 seconds
+    const now = Date.now();
+    gameState.weaponsDisabled = true;
+    gameState.weaponsDisabledUntil = now + 5000; // 5 seconds
+    
+    // Get the yellow flash overlay element
+    const flashOverlay = document.getElementById('yellowFlashOverlay');
+    if (!flashOverlay) return;
+    
+    // Flash effect: full yellow overlay that fades out
+    flashOverlay.style.background = 'rgba(255, 255, 0, 0.8)';
+    
+    // Fade out over 250ms (2x faster)
+    setTimeout(() => {
+        flashOverlay.style.background = 'rgba(255, 255, 0, 0)';
+    }, 250);
 }
 
 function playerWins() {
@@ -1131,6 +1160,25 @@ class Boss {
                 this.lastFlameTickTime = now;
                 // Remove one tick after dealing damage
                 this.flamedTicks = Math.max(0, this.flamedTicks - 1);
+                
+                // Spread effect: 30% chance per tick to spread to nearby enemies (within 10 pixels)
+                if (Math.random() < 0.3) {
+                    const spreadRange = 10;
+                    // Check regular enemies
+                    for (const enemy of gameState.enemies) {
+                        if (enemy === this || enemy.isDying) continue;
+                        const dx = enemy.x - this.x;
+                        const dy = enemy.y - this.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        if (distance <= spreadRange) {
+                            enemy.flamedTicks += 1;
+                            if (enemy.lastFlameTickTime === 0) {
+                                enemy.lastFlameTickTime = Date.now();
+                            }
+                            break; // Only spread to one enemy per tick
+                        }
+                    }
+                }
             }
         }
         
@@ -1180,6 +1228,8 @@ class Boss {
             if (timeSinceMusicStart >= this.invincibilityDuration) {
                 this.invincible = false;
                 console.log('Boss is now vulnerable and can attack!');
+                // Trigger yellow flash and disable weapons
+                triggerBossInvincibilityFlash();
             }
         }
         
@@ -1187,6 +1237,8 @@ class Boss {
         if (this.temporaryInvincible && now >= this.temporaryInvincibilityEndTime) {
             this.temporaryInvincible = false;
             console.log('Boss temporary invincibility expired.');
+            // Trigger yellow flash and disable weapons
+            triggerBossInvincibilityFlash();
         }
         
         // Drift down to target position
@@ -1915,6 +1967,37 @@ class Enemy {
                 this.lastFlameTickTime = now;
                 // Remove one tick after dealing damage
                 this.flamedTicks = Math.max(0, this.flamedTicks - 1);
+                
+                // Spread effect: 30% chance per tick to spread to nearby enemies (within 10 pixels)
+                if (Math.random() < 0.3) {
+                    const spreadRange = 10;
+                    // Check other enemies
+                    for (const enemy of gameState.enemies) {
+                        if (enemy === this || enemy.isDying) continue;
+                        const dx = enemy.x - this.x;
+                        const dy = enemy.y - this.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        if (distance <= spreadRange) {
+                            enemy.flamedTicks += 1;
+                            if (enemy.lastFlameTickTime === 0) {
+                                enemy.lastFlameTickTime = Date.now();
+                            }
+                            break; // Only spread to one enemy per tick
+                        }
+                    }
+                    // Also check boss if it exists
+                    if (gameState.boss && !gameState.boss.invincible && !gameState.boss.isDying) {
+                        const dx = gameState.boss.x - this.x;
+                        const dy = gameState.boss.y - this.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        if (distance <= spreadRange) {
+                            gameState.boss.flamedTicks += 1;
+                            if (gameState.boss.lastFlameTickTime === 0) {
+                                gameState.boss.lastFlameTickTime = Date.now();
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -2922,7 +3005,7 @@ class Projectile {
                 
                 // Apply flamed effect if Hitachi projectile
                 if (this.type === 'hitachi') {
-                    enemy.flamedTicks += 1; // Add one tick
+                    enemy.flamedTicks += 3; // Add three ticks
                     if (enemy.lastFlameTickTime === 0) {
                         enemy.lastFlameTickTime = Date.now(); // Initialize tick time
                     }
@@ -2966,7 +3049,7 @@ class Projectile {
                 
                 // Apply flamed effect if Hitachi projectile
                 if (this.type === 'hitachi') {
-                    gameState.boss.flamedTicks += 1; // Add one tick
+                    gameState.boss.flamedTicks += 3; // Add three ticks
                     if (gameState.boss.lastFlameTickTime === 0) {
                         gameState.boss.lastFlameTickTime = Date.now(); // Initialize tick time
                     }
@@ -3324,6 +3407,11 @@ class Weapon {
     }
 
     fire() {
+        // Don't fire if weapons are disabled
+        if (gameState.weaponsDisabled) {
+            return;
+        }
+        
         const now = Date.now();
         const player = gameState.player;
         
@@ -4581,8 +4669,16 @@ function gameLoop(currentTime) {
     gameState.enemies.forEach(enemy => enemy.update(deltaTime));
     gameState.enemies = gameState.enemies.filter(enemy => enemy.health > 0);
 
-    // Update weapons
-    gameState.weapons.forEach(weapon => weapon.fire());
+    // Update weapons (only if not disabled)
+    if (!gameState.weaponsDisabled) {
+        gameState.weapons.forEach(weapon => weapon.fire());
+    }
+    
+    // Check if weapons should be re-enabled
+    if (gameState.weaponsDisabled && Date.now() >= gameState.weaponsDisabledUntil) {
+        gameState.weaponsDisabled = false;
+        gameState.weaponsDisabledUntil = 0;
+    }
 
     // Update projectiles
     gameState.projectiles = gameState.projectiles.filter(proj => proj.update(deltaTime));
@@ -5026,6 +5122,8 @@ function restartGame() {
     gameState.score = 0; // Reset score
     gameState.endlessMode = false; // Reset endless mode
     gameState.endlessDifficultyLevel = 0; // Reset endless difficulty
+    gameState.autoUpgradePanties = false; // Reset auto-upgrade panties
+    gameState.autoUpgradeDamage = false; // Reset auto-upgrade damage
     
     // Initialize rerolls: 3 base + 0.1 per permanent level
     const permanentLevels = PermanentStats.totalLevelsGained;
@@ -5185,6 +5283,8 @@ async function initGame() {
         // Initialize rerolls: 3 base + 0.05 per permanent level (halved)
         const permanentLevels = PermanentStats.totalLevelsGained;
         gameState.rerolls = 3 + (permanentLevels * 0.05);
+        gameState.autoUpgradePanties = false; // Reset auto-upgrade panties
+        gameState.autoUpgradeDamage = false; // Reset auto-upgrade damage
         console.log('Game started! Player should be visible at center of screen.');
         if (!gameState.player) {
             console.error('ERROR: Player not initialized!');
@@ -5352,10 +5452,13 @@ async function initGame() {
         });
         
         // Initialize collar aura if collar weapon exists (it will be created on first fire)
-        const collarWeapon = gameState.weapons.find(w => w.type === 'collar');
-        if (collarWeapon) {
-            // Trigger fire to create the aura
-            collarWeapon.fire();
+        // Only fire if weapons are not disabled
+        if (!gameState.weaponsDisabled) {
+            const collarWeapon = gameState.weapons.find(w => w.type === 'collar');
+            if (collarWeapon) {
+                // Trigger fire to create the aura
+                collarWeapon.fire();
+            }
         }
         
         // Start game at beginning (not near boss)
@@ -5436,6 +5539,8 @@ async function initGame() {
         // Initialize rerolls: 3 base + 0.05 per permanent level (halved)
         const permanentLevels = PermanentStats.totalLevelsGained;
         gameState.rerolls = 3 + (permanentLevels * 0.05);
+        gameState.autoUpgradePanties = false; // Reset auto-upgrade panties
+        gameState.autoUpgradeDamage = false; // Reset auto-upgrade damage
         
         CONFIG.gameTime = 0;
         CONFIG.isPaused = false;
