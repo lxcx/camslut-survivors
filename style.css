@@ -226,6 +226,33 @@ body {
     font-size: 14px;
 }
 
+.auto-upgrade-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(74, 144, 226, 0.3);
+    cursor: pointer;
+    font-size: 12px;
+    color: #aaa;
+}
+
+.auto-upgrade-checkbox input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #4a90e2;
+}
+
+.auto-upgrade-checkbox span {
+    user-select: none;
+}
+
+.auto-upgrade-checkbox:hover {
+    color: #4a90e2;
+}
+
 .reroll-button {
     background: rgba(255, 215, 0, 0.1);
     border: 2px solid #ffd700;

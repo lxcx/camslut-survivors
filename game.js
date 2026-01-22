@@ -38,6 +38,8 @@ const gameState = {
     level: 1,
     xp: 0,
     xpNeeded: 10,
+    autoUpgradePanties: false, // Auto-select panties when only panties and damage are available
+    autoUpgradeDamage: false, // Auto-select damage (hidden vibe) when only panties and damage are available
     startTime: null,
     startLevel: 1, // Track starting level for permanent stats
     boss: null, // Boss enemy
@@ -3750,9 +3752,11 @@ function spawnExperienceOrb(x, y, value) {
         const xpMultiplier = 1 + (gameState.cockRingLevel * 0.05);
         value = Math.floor(value * xpMultiplier);
     }
-    // Apply permanent XP gain bonus (+1% per level gained)
-    const bonuses = PermanentStats.getBonuses();
-    value = Math.floor(value * bonuses.xpGain);
+    // Apply permanent XP gain bonus (+1% per level gained) - DISABLED in hard mode
+    if (!gameState.hardMode) {
+        const bonuses = PermanentStats.getBonuses();
+        value = Math.floor(value * bonuses.xpGain);
+    }
     
     // Add score: 1 point per base XP (before modifiers)
     // Hard mode doubles points
@@ -3763,8 +3767,19 @@ function spawnExperienceOrb(x, y, value) {
 }
 
 // Level System
+// Track if we're currently showing an upgrade modal (to prevent multiple modals)
+let isShowingUpgrade = false;
+let pendingLevelUps = 0; // Track how many level ups are pending
+
 function checkLevelUp() {
-    if (gameState.xp >= gameState.xpNeeded) {
+    // If we're already showing an upgrade modal, don't process more level ups yet
+    // They will be processed after the current upgrade is selected
+    if (isShowingUpgrade) {
+        return;
+    }
+    
+    // Process all available level ups sequentially
+    while (gameState.xp >= gameState.xpNeeded) {
         const oldLevel = gameState.level;
         gameState.level++;
         gameState.xp -= gameState.xpNeeded;
@@ -3776,8 +3791,28 @@ function checkLevelUp() {
         // Play level up sound effect
         SoundEffects.play('levelUp');
         
-        // Show upgrade selection
+        // In hard mode, auto-select a random upgrade without showing the modal
+        if (gameState.hardMode) {
+            const upgrades = generateUpgradeOptions();
+            if (upgrades.length > 0) {
+                // Randomly select one upgrade
+                const randomUpgrade = upgrades[Math.floor(Math.random() * upgrades.length)];
+                // Apply the upgrade directly without showing modal
+                applyUpgrade(randomUpgrade);
+                // Continue processing level ups (don't break, as we're not showing a modal)
+                continue;
+            }
+        }
+        
+        // Mark that we're showing an upgrade modal
+        isShowingUpgrade = true;
+        
+        // Show upgrade selection (this will pause further level up processing)
         showUpgradeSelection();
+        
+        // Break after showing the first upgrade modal
+        // The next level up will be processed after this upgrade is selected
+        break;
     }
 }
 
@@ -3801,6 +3836,37 @@ function showUpgradeSelection() {
     }
 
     const upgrades = generateUpgradeOptions();
+    
+    // Check if only panties and damage (hidden vibe) are available
+    const onlyPantiesAndDamage = upgrades.length === 2 && 
+        upgrades.every(u => u.type === 'panties' || u.type === 'damage') &&
+        upgrades.some(u => u.type === 'panties') &&
+        upgrades.some(u => u.type === 'damage');
+    
+    // If auto-upgrade is enabled and only panties/damage are available, auto-select
+    if (onlyPantiesAndDamage) {
+        let autoSelected = false;
+        if (gameState.autoUpgradePanties) {
+            const pantiesUpgrade = upgrades.find(u => u.type === 'panties');
+            if (pantiesUpgrade) {
+                // Note: level up sound is already played in checkLevelUp() before this function is called
+                selectUpgrade(pantiesUpgrade);
+                autoSelected = true;
+            }
+        } else if (gameState.autoUpgradeDamage) {
+            const damageUpgrade = upgrades.find(u => u.type === 'damage');
+            if (damageUpgrade) {
+                // Note: level up sound is already played in checkLevelUp() before this function is called
+                selectUpgrade(damageUpgrade);
+                autoSelected = true;
+            }
+        }
+        
+        // If auto-selected, don't show the modal
+        if (autoSelected) {
+            return;
+        }
+    }
     
     upgrades.forEach(upgrade => {
         const option = document.createElement('div');
@@ -3890,11 +3956,26 @@ function showUpgradeSelection() {
             }
         }
         
+        // Add checkbox for auto-upgrade if this is panties or damage and only panties/damage are available
+        let checkboxHtml = '';
+        if (onlyPantiesAndDamage && (upgrade.type === 'panties' || upgrade.type === 'damage')) {
+            const isChecked = (upgrade.type === 'panties' && gameState.autoUpgradePanties) ||
+                             (upgrade.type === 'damage' && gameState.autoUpgradeDamage);
+            checkboxHtml = `
+                <label class="auto-upgrade-checkbox" onclick="event.stopPropagation();">
+                    <input type="checkbox" ${isChecked ? 'checked' : ''} 
+                           onchange="gameState.autoUpgrade${upgrade.type === 'panties' ? 'Panties' : 'Damage'} = this.checked;">
+                    <span>Select this every time</span>
+                </label>
+            `;
+        }
+        
         option.innerHTML = `
             ${spriteHtml}
             <div class="upgrade-text">
                 <h3>${nameText}</h3>
                 <p>${descriptionText}</p>
+                ${checkboxHtml}
             </div>
         `;
         option.onclick = () => selectUpgrade(upgrade);
@@ -4021,11 +4102,8 @@ function rerollUpgrades() {
     showUpgradeSelection();
 }
 
-function selectUpgrade(upgrade) {
-    const modal = document.getElementById('upgradeModal');
-    modal.classList.remove('active');
-    CONFIG.isPaused = false;
-
+// Apply upgrade effects (shared by selectUpgrade and hard mode auto-select)
+function applyUpgrade(upgrade) {
     if (upgrade.type === 'new_weapon') {
         gameState.weapons.push(new Weapon(upgrade.weapon));
     } else if (upgrade.type === 'chastity_cage') {
@@ -4063,6 +4141,24 @@ function selectUpgrade(upgrade) {
     }
 
     updateUI();
+}
+
+function selectUpgrade(upgrade) {
+    const modal = document.getElementById('upgradeModal');
+    modal.classList.remove('active');
+    CONFIG.isPaused = false;
+
+    // Apply the upgrade
+    applyUpgrade(upgrade);
+    
+    // Mark that we're no longer showing an upgrade modal
+    isShowingUpgrade = false;
+    
+    // Check if there are more level ups available after selecting this upgrade
+    // Use setTimeout to ensure the modal is fully closed before checking
+    setTimeout(() => {
+        checkLevelUp();
+    }, 100);
 }
 
 // Game Loop
@@ -4709,7 +4805,12 @@ function retryGame() {
     // Start gameplay immediately
     gameState.startTime = Date.now();
     gameState.startLevel = gameState.level;
-    MusicManager.playGameplay();
+    // Play appropriate music based on mode
+    if (gameState.hardMode || gameState.endlessMode) {
+        MusicManager.playHardEndlessStart();
+    } else {
+        MusicManager.playGameplay();
+    }
     requestAnimationFrame(gameLoop);
 }
 
