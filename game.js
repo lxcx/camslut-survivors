@@ -2628,6 +2628,9 @@ class CollarAura {
     }
 
     update() {
+        // Remove aura if weapons are disabled
+        if (gameState.weaponsDisabled) return false;
+        
         const now = Date.now();
         const player = gameState.player;
         
@@ -2798,6 +2801,9 @@ class DamagePool {
     }
 
     update() {
+        // Remove pool if weapons are disabled
+        if (gameState.weaponsDisabled) return false;
+        
         const now = Date.now();
         const age = now - this.created;
 
