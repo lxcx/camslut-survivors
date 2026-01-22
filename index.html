@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camslut Survivors - Browser Game</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="game-container">
+        <!-- Items List (Weapons & Upgrades) - Left Side -->
+        <div class="items-panel">
+            <div class="weapons-list" id="weaponsList"></div>
+            <div class="upgrades-list" id="upgradesList"></div>
+        </div>
+        
+        <!-- Canvas Wrapper -->
+        <div class="canvas-wrapper">
+            <!-- Logo (Above Canvas) -->
+            <div class="game-logo-overlay" id="gameLogoOverlay"></div>
+            <canvas id="gameCanvas"></canvas>
+            
+            <!-- UI Overlay (Stats) -->
+            <div class="ui-overlay">
+                <!-- Stats (Gameplay UI) - Top -->
+                <div class="stats">
+                    <div class="stat">
+                        <span class="stat-label">Level:</span>
+                        <span id="level">1</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">XP:</span>
+                        <span id="xp">0</span>/<span id="xpNeeded">10</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Health:</span>
+                        <span id="health">100</span>/<span id="maxHealth">100</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-label">Time:</span>
+                        <span id="time">5:00</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Permanent Stats Panel (Right Side) -->
+            <div class="permanent-stats-panel" id="permanentStatsPanel"></div>
+        </div>
+        
+        <!-- Upgrade Selection Modal -->
+        <div class="upgrade-modal" id="upgradeModal">
+            <div class="upgrade-content">
+                <h2>Level Up! Choose an Upgrade</h2>
+                <div class="upgrade-options" id="upgradeOptions"></div>
+            </div>
+        </div>
+        
+        <!-- Game Over Modal -->
+        <div class="game-over-modal" id="gameOverModal">
+            <div class="game-over-content">
+                <div class="modal-sprite" id="gameOverModalSprite">
+                    <img id="gameOverSpriteImage" src="" alt="Sprite" style="display: none;">
+                </div>
+                <h2>Game Over!</h2>
+                <p>You survived for <span id="finalTime">0</span> seconds</p>
+                <p>Reached Level <span id="finalLevel">1</span></p>
+                <div class="game-over-buttons">
+                    <button id="retryButton" class="menu-button">Retry</button>
+                    <button id="mainMenuButton" class="menu-button">Return to Main Menu</button>
+                </div>
+                <p id="gameOverHint" style="margin-top: 20px; font-size: 11px; color: #888; font-style: italic;"></p>
+            </div>
+        </div>
+        
+        <!-- Win Modal -->
+        <div class="win-modal" id="winModal">
+            <div class="win-content">
+                <div class="modal-sprite" id="winModalSprite">
+                    <img id="winSpriteImage" src="" alt="Sprite" style="display: none;">
+                </div>
+                <h2>YOU WON!</h2>
+                <p>You defeated the boss!</p>
+                <p>Survived for <span id="winTime">0</span> seconds</p>
+                <p>Reached Level <span id="winLevel">1</span></p>
+                <div class="game-over-buttons">
+                    <button id="winMainMenuButton" class="menu-button">Return to Main Menu</button>
+                </div>
+                <p id="winHint" style="margin-top: 20px; font-size: 11px; color: #888; font-style: italic;"></p>
+            </div>
+        </div>
+        
+        <!-- Initial Challenge Modal -->
+        <div class="challenge-modal active" id="challengeModal">
+            <div class="modal-content">
+                <div class="modal-sprite" id="challengeModalSprite">
+                    <img id="challengeSpriteImage" src="" alt="Sprite" style="display: none;">
+                </div>
+                <h2>Challenge Declaration</h2>
+                <p class="challenge-text">I hereby declare that I am not a little bitch afraid of a challenge.</p>
+                <div class="challenge-buttons">
+                    <button id="agreeButton" class="menu-button">I agree</button>
+                    <button id="declineButton" class="menu-button">I decline</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Start Menu -->
+        <div class="start-screen" id="startScreen">
+            <div class="start-content">
+                <!-- Logo -->
+                <div class="game-logo" id="gameLogo">
+                    <img id="logoImage" src="" alt="Game Logo" style="display: none;">
+                </div>
+                
+                <!-- Character Sprite -->
+                <div class="menu-character" id="menuCharacter">
+                    <img id="menuCharacterImage" src="" alt="Character" style="display: none;">
+                </div>
+                
+                <!-- Menu Buttons -->
+                <div class="menu-buttons">
+                    <button id="startButton" class="menu-button">Start Game</button>
+                    <button id="aboutButton" class="menu-button">About</button>
+                    <button id="settingsButton" class="menu-button">Settings</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- About Modal -->
+        <div class="about-modal" id="aboutModal">
+            <div class="modal-content">
+                <h2>About</h2>
+                <div class="about-text">
+                    <h3>Gameplay</h3>
+                    <p>Survive as long as you can against waves of enemies!</p>
+                    <p><strong>Controls:</strong> Use WASD or Arrow Keys to move</p>
+                    <p><strong>Objective:</strong> Defeat enemies to gain XP and level up. Choose upgrades to become stronger.</p>
+                    <p><strong>Enemies:</strong></p>
+                    <ul id="enemiesAboutList" style="list-style: none; padding-left: 0;">
+                        <!-- Enemies will be dynamically added here -->
+                    </ul>
+                    <p><strong>XP Bubbles:</strong></p>
+                    <ul id="xpAboutList" style="list-style: none; padding-left: 0;">
+                        <!-- XP bubbles will be dynamically added here -->
+                    </ul>
+                    <p><strong>Weapons:</strong></p>
+                    <ul id="weaponsAboutList" style="list-style: none; padding-left: 0;">
+                        <!-- Weapons will be dynamically added here -->
+                    </ul>
+                    <p><strong>Permanent Upgrades:</strong> Upon death, every level you gained during that session increases your permanent stat boosts for all future runs!</p>
+                </div>
+                <button id="closeAboutButton" class="close-button">Close</button>
+            </div>
+        </div>
+        
+        <!-- Settings Modal -->
+        <div class="settings-modal" id="settingsModal">
+            <div class="modal-content">
+                <h2>Settings</h2>
+                <div class="settings-options">
+                    <div class="setting-item">
+                        <h3>Audio Settings</h3>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                                <input type="checkbox" id="muteMusicCheckbox" style="cursor: pointer;">
+                                <span>Mute Music</span>
+                            </label>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                                <input type="checkbox" id="muteSoundEffectsCheckbox" style="cursor: pointer;">
+                                <span>Mute Sound Effects (includes boss dialogue)</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="setting-item">
+                        <h3>Clear Permanent Stats</h3>
+                        <p>Reset all permanent upgrades back to zero.</p>
+                        <button id="clearStatsButton" class="danger-button">Clear Stats</button>
+                    </div>
+                    <div class="setting-item">
+                        <h3>Test Mode</h3>
+                        <p>Enable test mode with all weapons at level 5. Requires password.</p>
+                        <input type="password" id="testModePassword" placeholder="Enter password" class="password-input">
+                        <button id="enableTestModeButton" class="menu-button">Enable Test Mode</button>
+                        <p id="testModeMessage" class="message-text"></p>
+                    </div>
+                </div>
+                <button id="closeSettingsButton" class="close-button">Close</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="game.js"></script>
+</body>
+</html>
