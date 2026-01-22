@@ -136,15 +136,15 @@ const PermanentStats = {
             speed: 1 + (this.totalLevelsGained * 0.001) // +0.1% per level
         };
         
-        // Halve bonuses in hard mode
+        // Reduce bonuses to 1/5th in hard mode
         if (gameState.hardMode) {
             return {
-                xpGain: 1 + (baseBonuses.xpGain - 1) * 0.5, // Halve the bonus portion
-                damage: 1 + (baseBonuses.damage - 1) * 0.5,
-                hp: 1 + (baseBonuses.hp - 1) * 0.5,
-                cooldown: 1 - (1 - baseBonuses.cooldown) * 0.5, // Halve the reduction
-                attackSize: 1 + (baseBonuses.attackSize - 1) * 0.5,
-                speed: 1 + (baseBonuses.speed - 1) * 0.5
+                xpGain: 1 + (baseBonuses.xpGain - 1) * 0.2, // 1/5th of the bonus portion
+                damage: 1 + (baseBonuses.damage - 1) * 0.2,
+                hp: 1 + (baseBonuses.hp - 1) * 0.2,
+                cooldown: 1 - (1 - baseBonuses.cooldown) * 0.2, // 1/5th of the reduction
+                attackSize: 1 + (baseBonuses.attackSize - 1) * 0.2,
+                speed: 1 + (baseBonuses.speed - 1) * 0.2
             };
         }
         
@@ -1785,9 +1785,9 @@ class Enemy {
         }
         
         // Apply hard mode to BASE XP (before elite multipliers)
-        // This ensures hard mode doubles base XP, which then gets multiplied by elite bonuses
+        // This ensures hard mode doubles base XP twice (4x total), which then gets multiplied by elite bonuses
         if (gameState.hardMode) {
-            baseXpValue *= 2;
+            baseXpValue *= 4; // Double twice = 4x total
         }
         
         // Apply elite bonuses if this enemy is elite
