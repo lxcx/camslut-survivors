@@ -4524,8 +4524,8 @@ function updateUI() {
     // Update permanent stats display
     updatePermanentStatsUI();
     
-    // Update logo display
-    updateLogoDisplay();
+    // Don't call updateLogoDisplay() every frame - it causes flickering
+    // Logo visibility is handled by CSS !important and explicit show on game start
 
     // Update weapons list
     const weaponsList = document.getElementById('weaponsList');
@@ -5036,9 +5036,13 @@ async function initGame() {
             itemsPanel.style.display = 'flex';
             itemsPanel.style.visibility = 'visible';
         }
-        // Ensure logo overlay is visible
+        // Ensure logo overlay is visible and has content
         const logoOverlay = document.getElementById('gameLogoOverlay');
         if (logoOverlay) {
+            const logoData = SpriteManager.getSprite('logo');
+            if (logoData && logoData.image) {
+                logoOverlay.innerHTML = `<img src="${logoData.image.src}" alt="Logo" class="logo-overlay-img">`;
+            }
             logoOverlay.style.display = 'block';
             logoOverlay.style.visibility = 'visible';
         }
@@ -5260,9 +5264,13 @@ async function initGame() {
             itemsPanel.style.display = 'flex';
             itemsPanel.style.visibility = 'visible';
         }
-        // Ensure logo overlay is visible
+        // Ensure logo overlay is visible and has content
         const logoOverlay = document.getElementById('gameLogoOverlay');
         if (logoOverlay) {
+            const logoData = SpriteManager.getSprite('logo');
+            if (logoData && logoData.image) {
+                logoOverlay.innerHTML = `<img src="${logoData.image.src}" alt="Logo" class="logo-overlay-img">`;
+            }
             logoOverlay.style.display = 'block';
             logoOverlay.style.visibility = 'visible';
         }
@@ -5389,11 +5397,17 @@ function updateLogoDisplay() {
                           !CONFIG.isPaused && 
                           !CONFIG.isGameOver;
         
-        if (logoOverlay && logoData && logoData.image && isGameplay) {
-            logoOverlay.innerHTML = `<img src="${logoData.image.src}" alt="Logo" class="logo-overlay-img">`;
-            logoOverlay.style.display = 'block';
-        } else {
-            logoOverlay.style.display = 'none';
+        if (logoOverlay && logoData && logoData.image) {
+            if (isGameplay) {
+                // During gameplay: only update content if empty, don't touch display (CSS !important handles it)
+                // Don't set display here - it's already set on game start and CSS !important keeps it visible
+                if (logoOverlay.innerHTML === '') {
+                    logoOverlay.innerHTML = `<img src="${logoData.image.src}" alt="Logo" class="logo-overlay-img">`;
+                }
+            } else {
+                // In menus: hide the logo
+                logoOverlay.style.display = 'none';
+            }
         }
     }
     

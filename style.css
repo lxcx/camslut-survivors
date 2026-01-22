@@ -19,6 +19,7 @@ body {
     gap: 15px;
     align-items: flex-start;
     position: relative;
+    z-index: 1;
 }
 
 .canvas-wrapper {
@@ -93,6 +94,7 @@ body {
     position: relative;
     z-index: 100;
     visibility: visible !important;
+    opacity: 1 !important;
 }
 
 .weapons-list,
@@ -152,6 +154,12 @@ body {
 .settings-modal.active,
 .challenge-modal.active {
     display: flex;
+}
+
+/* Ensure start screen doesn't interfere when not active */
+.start-screen:not(.active) {
+    display: none !important;
+    pointer-events: none !important;
 }
 
 .upgrade-content,
