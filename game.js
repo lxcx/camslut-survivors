@@ -667,6 +667,8 @@ function initCanvas() {
     CONFIG.ctx = CONFIG.canvas.getContext('2d');
     CONFIG.canvas.width = CONFIG.width;
     CONFIG.canvas.height = CONFIG.height;
+    // Disable image smoothing for pixel-perfect rendering
+    CONFIG.ctx.imageSmoothingEnabled = false;
 }
 
 // Player Class
@@ -2920,6 +2922,9 @@ class ExperienceOrb {
             const currentSize = this.radius * 2 * sizeMultiplier; // Base size * multiplier
             
             ctx.globalAlpha = opacity;
+            
+            // Disable image smoothing for pixel-perfect rendering
+            ctx.imageSmoothingEnabled = false;
             
             // Draw the sprite centered
             ctx.drawImage(
