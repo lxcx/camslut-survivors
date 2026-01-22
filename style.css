@@ -48,7 +48,7 @@ body {
     position: absolute;
     top: 15px;
     right: 15px;
-    z-index: 15;
+    z-index: 100;
     pointer-events: none;
 }
 
@@ -88,6 +88,8 @@ body {
     gap: 15px;
     width: 250px;
     flex-shrink: 0;
+    position: relative;
+    z-index: 100;
 }
 
 .weapons-list,

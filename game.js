@@ -2479,9 +2479,10 @@ class Strike {
 
 // Collar Aura Class (for collar - Garlic style constant damage field)
 class CollarAura {
-    constructor(radius, damage, damageInterval, level = 1, rotationDirection = 0) {
+    constructor(radius, damage, damageInterval, level = 1, rotationDirection = 0, weaponType = null) {
         this.radius = radius;
         this.damage = damage;
+        this.weaponType = weaponType; // Track which weapon created this aura
         this.damageInterval = damageInterval; // How often to deal damage (ms)
         this.lastDamageTime = 0;
         this.created = Date.now();
@@ -2541,8 +2542,11 @@ class CollarAura {
                 if (distance < hitboxRadius + enemy.radius) {
                     const killed = enemy.takeDamage(this.damage);
                     
-                    // Track damage for weapon DPS calculation
-                    if (this.weaponType) {
+                    // Track damage for weapon DPS calculation (CollarAura)
+                    // Use weaponId if available (direct reference), otherwise use weaponType
+                    if (this.weaponId) {
+                        this.weaponId.totalDamage += this.damage;
+                    } else if (this.weaponType) {
                         const weapon = gameState.weapons.find(w => w.type === this.weaponType);
                         if (weapon) {
                             weapon.totalDamage += this.damage;
@@ -2564,6 +2568,18 @@ class CollarAura {
                 
                 if (distance < hitboxRadius + gameState.boss.radius) {
                     const killed = gameState.boss.takeDamage(this.damage, 'collar-aura');
+                    
+                    // Track damage for weapon DPS calculation
+                    // Use weaponId if available (direct reference), otherwise use weaponType
+                    if (this.weaponId) {
+                        this.weaponId.totalDamage += this.damage;
+                    } else if (this.weaponType) {
+                        const weapon = gameState.weapons.find(w => w.type === this.weaponType);
+                        if (weapon) {
+                            weapon.totalDamage += this.damage;
+                        }
+                    }
+                    
                     if (killed) {
                         // Death animation will handle playerWins() call
                     }
@@ -5325,8 +5341,10 @@ function updateLogoDisplay() {
     if (logoOverlay) {
         const startScreen = document.getElementById('startScreen');
         const gameOverModal = document.getElementById('gameOverModal');
+        const winModal = document.getElementById('winModal');
         const isGameplay = !startScreen.classList.contains('active') && 
                           !gameOverModal.classList.contains('active') && 
+                          !winModal.classList.contains('active') &&
                           !CONFIG.isPaused && 
                           !CONFIG.isGameOver;
         
