@@ -1161,9 +1161,9 @@ class Boss {
                 // Remove one tick after dealing damage
                 this.flamedTicks = Math.max(0, this.flamedTicks - 1);
                 
-                // Spread effect: 30% chance per tick to spread to nearby enemies (within 10 pixels)
+                // Spread effect: 30% chance per tick to spread to nearby enemies (within 20 pixels)
                 if (Math.random() < 0.3) {
-                    const spreadRange = 10;
+                    const spreadRange = 20;
                     // Check regular enemies
                     for (const enemy of gameState.enemies) {
                         if (enemy === this || enemy.isDying) continue;
@@ -1968,9 +1968,9 @@ class Enemy {
                 // Remove one tick after dealing damage
                 this.flamedTicks = Math.max(0, this.flamedTicks - 1);
                 
-                // Spread effect: 30% chance per tick to spread to nearby enemies (within 10 pixels)
+                // Spread effect: 30% chance per tick to spread to nearby enemies (within 20 pixels)
                 if (Math.random() < 0.3) {
-                    const spreadRange = 10;
+                    const spreadRange = 20;
                     // Check other enemies
                     for (const enemy of gameState.enemies) {
                         if (enemy === this || enemy.isDying) continue;
@@ -2671,16 +2671,24 @@ class CollarAura {
                 const distance = Math.sqrt(dx * dx + dy * dy);
                 
                 if (distance < hitboxRadius + enemy.radius) {
-                    const killed = enemy.takeDamage(this.damage);
+                    // Calculate damage: 30% reduction if enemy is in outer 30% of aura
+                    // Outer 30% means distance > 70% of aura radius
+                    let damageToDeal = this.damage;
+                    const effectiveDistance = distance - enemy.radius; // Distance from player to enemy edge
+                    if (effectiveDistance > hitboxRadius * 0.7) {
+                        damageToDeal = this.damage * 0.7; // 30% reduction
+                    }
+                    
+                    const killed = enemy.takeDamage(damageToDeal);
                     
                     // Track damage for weapon DPS calculation (CollarAura)
                     // Use weaponId if available (direct reference), otherwise use weaponType
                     if (this.weaponId) {
-                        this.weaponId.totalDamage += this.damage;
+                        this.weaponId.totalDamage += damageToDeal;
                     } else if (this.weaponType) {
                         const weapon = gameState.weapons.find(w => w.type === this.weaponType);
                         if (weapon) {
-                            weapon.totalDamage += this.damage;
+                            weapon.totalDamage += damageToDeal;
                         }
                     }
                     
@@ -2698,16 +2706,24 @@ class CollarAura {
                 const distance = Math.sqrt(dx * dx + dy * dy);
                 
                 if (distance < hitboxRadius + gameState.boss.radius) {
-                    const killed = gameState.boss.takeDamage(this.damage, 'collar-aura');
+                    // Calculate damage: 30% reduction if boss is in outer 30% of aura
+                    // Outer 30% means distance > 70% of aura radius
+                    let damageToDeal = this.damage;
+                    const effectiveDistance = distance - gameState.boss.radius; // Distance from player to boss edge
+                    if (effectiveDistance > hitboxRadius * 0.7) {
+                        damageToDeal = this.damage * 0.7; // 30% reduction
+                    }
+                    
+                    const killed = gameState.boss.takeDamage(damageToDeal, 'collar-aura');
                     
                     // Track damage for weapon DPS calculation
                     // Use weaponId if available (direct reference), otherwise use weaponType
                     if (this.weaponId) {
-                        this.weaponId.totalDamage += this.damage;
+                        this.weaponId.totalDamage += damageToDeal;
                     } else if (this.weaponType) {
                         const weapon = gameState.weapons.find(w => w.type === this.weaponType);
                         if (weapon) {
-                            weapon.totalDamage += this.damage;
+                            weapon.totalDamage += damageToDeal;
                         }
                     }
                     
