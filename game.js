@@ -4557,83 +4557,101 @@ function updateUI() {
     // Don't call updateLogoDisplay() every frame - it causes flickering
     // Logo visibility is handled by CSS !important and explicit show on game start
 
-    // Update weapons list (cache sprite HTML to avoid repeated image loads)
+    // Update weapons list only when content changes (cache sprite HTML and track previous state)
     const weaponsList = document.getElementById('weaponsList');
-    const weaponsHeader = '<div style="color: #4a90e2; font-weight: 600; margin-bottom: 5px;">Weapons:</div>';
-    let weaponsHtml = weaponsHeader;
     
-    // Cache sprite HTML strings
-    if (!gameState.weaponSpriteCache) {
-        gameState.weaponSpriteCache = {};
-    }
+    // Create a signature of current weapons state
+    const weaponsSignature = gameState.weapons.map(w => `${w.type}-${w.level}`).join(',');
     
-    gameState.weapons.forEach(weapon => {
-        const spriteName = `weapon-${weapon.type}`;
+    // Only update if weapons have changed
+    if (!gameState.lastWeaponsSignature || gameState.lastWeaponsSignature !== weaponsSignature) {
+        gameState.lastWeaponsSignature = weaponsSignature;
         
-        // Cache sprite HTML if not already cached
-        if (!gameState.weaponSpriteCache[spriteName]) {
-            const spriteData = SpriteManager.getSprite(spriteName);
-            if (spriteData && spriteData.image) {
-                gameState.weaponSpriteCache[spriteName] = `<img src="${spriteData.image.src}" class="weapon-sprite-icon" alt="${weapon.name}">`;
-            } else {
-                gameState.weaponSpriteCache[spriteName] = '';
-            }
+        const weaponsHeader = '<div style="color: #4a90e2; font-weight: 600; margin-bottom: 5px;">Weapons:</div>';
+        let weaponsHtml = weaponsHeader;
+        
+        // Cache sprite HTML strings
+        if (!gameState.weaponSpriteCache) {
+            gameState.weaponSpriteCache = {};
         }
         
-        weaponsHtml += `<div class="weapon-item">${gameState.weaponSpriteCache[spriteName]}<span>${weapon.name} Lv.${weapon.level}</span></div>`;
-    });
+        gameState.weapons.forEach(weapon => {
+            const spriteName = `weapon-${weapon.type}`;
+            
+            // Cache sprite HTML if not already cached
+            if (!gameState.weaponSpriteCache[spriteName]) {
+                const spriteData = SpriteManager.getSprite(spriteName);
+                if (spriteData && spriteData.image) {
+                    gameState.weaponSpriteCache[spriteName] = `<img src="${spriteData.image.src}" class="weapon-sprite-icon" alt="${weapon.name}">`;
+                } else {
+                    gameState.weaponSpriteCache[spriteName] = '';
+                }
+            }
+            
+            weaponsHtml += `<div class="weapon-item">${gameState.weaponSpriteCache[spriteName]}<span>${weapon.name} Lv.${weapon.level}</span></div>`;
+        });
+        
+        weaponsList.innerHTML = weaponsHtml;
+    }
     
-    weaponsList.innerHTML = weaponsHtml;
-    
-    // Update upgrades list (separate from weapons) - cache sprite HTML
+    // Update upgrades list only when content changes (cache sprite HTML and track previous state)
     const upgradesList = document.getElementById('upgradesList');
-    const upgradesHeader = '<div style="color: #ff6b9d; font-weight: 600; margin-bottom: 5px;">Upgrades:</div>';
-    let upgradesHtml = upgradesHeader;
     
-    // Cache upgrade sprite HTML strings
-    if (!gameState.upgradeSpriteCache) {
-        gameState.upgradeSpriteCache = {};
-    }
+    // Create a signature of current upgrades state
+    const upgradesSignature = `${gameState.lubeLevel}-${gameState.chastityCageLevel}-${gameState.hiddenVibeLevel}-${gameState.cockRingLevel}-${gameState.pantiesLevel}`;
     
-    // Helper function to get cached sprite HTML
-    const getCachedSpriteHtml = (spriteName, altText) => {
-        if (!gameState.upgradeSpriteCache[spriteName]) {
-            const spriteData = SpriteManager.getSprite(spriteName);
-            if (spriteData && spriteData.image) {
-                gameState.upgradeSpriteCache[spriteName] = `<img src="${spriteData.image.src}" class="weapon-sprite-icon" alt="${altText}">`;
-            } else {
-                gameState.upgradeSpriteCache[spriteName] = '';
-            }
+    // Only update if upgrades have changed
+    if (!gameState.lastUpgradesSignature || gameState.lastUpgradesSignature !== upgradesSignature) {
+        gameState.lastUpgradesSignature = upgradesSignature;
+        
+        const upgradesHeader = '<div style="color: #ff6b9d; font-weight: 600; margin-bottom: 5px;">Upgrades:</div>';
+        let upgradesHtml = upgradesHeader;
+        
+        // Cache upgrade sprite HTML strings
+        if (!gameState.upgradeSpriteCache) {
+            gameState.upgradeSpriteCache = {};
         }
-        return gameState.upgradeSpriteCache[spriteName];
-    };
-    
-    // Display Lube if owned
-    if (gameState.lubeLevel > 0) {
-        upgradesHtml += `<div class="weapon-item">${getCachedSpriteHtml('lube', 'Lube')}<span>Lube Lv.${gameState.lubeLevel}</span></div>`;
+        
+        // Helper function to get cached sprite HTML
+        const getCachedSpriteHtml = (spriteName, altText) => {
+            if (!gameState.upgradeSpriteCache[spriteName]) {
+                const spriteData = SpriteManager.getSprite(spriteName);
+                if (spriteData && spriteData.image) {
+                    gameState.upgradeSpriteCache[spriteName] = `<img src="${spriteData.image.src}" class="weapon-sprite-icon" alt="${altText}">`;
+                } else {
+                    gameState.upgradeSpriteCache[spriteName] = '';
+                }
+            }
+            return gameState.upgradeSpriteCache[spriteName];
+        };
+        
+        // Display Lube if owned
+        if (gameState.lubeLevel > 0) {
+            upgradesHtml += `<div class="weapon-item">${getCachedSpriteHtml('lube', 'Lube')}<span>Lube Lv.${gameState.lubeLevel}</span></div>`;
+        }
+        
+        // Display Chastity Cage if owned
+        if (gameState.chastityCageLevel > 0) {
+            upgradesHtml += `<div class="weapon-item">${getCachedSpriteHtml('chastitycage', 'Chastity Cage')}<span>Chastity Cage Lv.${gameState.chastityCageLevel}</span></div>`;
+        }
+        
+        // Display Hidden Vibe if owned
+        if (gameState.hiddenVibeLevel > 0) {
+            upgradesHtml += `<div class="weapon-item">${getCachedSpriteHtml('hiddenvibe', 'Hidden Vibe')}<span>Hidden Vibe (Endless)</span></div>`;
+        }
+        
+        // Display Cock Ring if owned
+        if (gameState.cockRingLevel > 0) {
+            upgradesHtml += `<div class="weapon-item">${getCachedSpriteHtml('cockring', 'Cock Ring')}<span>Cock Ring Lv.${gameState.cockRingLevel}</span></div>`;
+        }
+        
+        // Display Crotchless Panties if owned
+        if (gameState.pantiesLevel > 0) {
+            upgradesHtml += `<div class="weapon-item">${getCachedSpriteHtml('panties', 'Crotchless Panties')}<span>Crotchless Panties (Endless)</span></div>`;
+        }
+        
+        upgradesList.innerHTML = upgradesHtml;
     }
-    
-    // Display Chastity Cage if owned
-    if (gameState.chastityCageLevel > 0) {
-        upgradesHtml += `<div class="weapon-item">${getCachedSpriteHtml('chastitycage', 'Chastity Cage')}<span>Chastity Cage Lv.${gameState.chastityCageLevel}</span></div>`;
-    }
-    
-    // Display Hidden Vibe if owned
-    if (gameState.hiddenVibeLevel > 0) {
-        upgradesHtml += `<div class="weapon-item">${getCachedSpriteHtml('hiddenvibe', 'Hidden Vibe')}<span>Hidden Vibe (Endless)</span></div>`;
-    }
-    
-    // Display Cock Ring if owned
-    if (gameState.cockRingLevel > 0) {
-        upgradesHtml += `<div class="weapon-item">${getCachedSpriteHtml('cockring', 'Cock Ring')}<span>Cock Ring Lv.${gameState.cockRingLevel}</span></div>`;
-    }
-    
-    // Display Crotchless Panties if owned
-    if (gameState.pantiesLevel > 0) {
-        upgradesHtml += `<div class="weapon-item">${getCachedSpriteHtml('panties', 'Crotchless Panties')}<span>Crotchless Panties (Endless)</span></div>`;
-    }
-    
-    upgradesList.innerHTML = upgradesHtml;
 }
 
 function updateWeaponsAboutList() {
