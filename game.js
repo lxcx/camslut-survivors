@@ -3137,10 +3137,36 @@ class Weapon {
             
             // Level 5: rotating strike instead of left/right
             if (this.level >= 5) {
-                // Create rotating strike that goes full circle in less than 300ms
-                // 360 degrees / 0.3 seconds = 1200 degrees per second
-                const rotationSpeed = 1200; // Rotation speed (degrees per second) to complete in <300ms
-                const fullRotationTime = (360 / rotationSpeed) * 1000; // Time for full rotation in ms (~300ms)
+                // Calculate cooldown multiplier to scale rotation speed
+                // Use same formula as dildo cooldown calculation (multiplicative per level)
+                let finalCooldown = this.baseCooldown;
+                // Dildo uses 10% reduction per level: baseCooldown * (0.9 ^ (level - 1))
+                finalCooldown = this.baseCooldown * Math.pow(0.9, this.level - 1);
+                
+                // Apply Lube reduction: 10% per level (multiplicative)
+                if (gameState.lubeLevel > 0) {
+                    finalCooldown = finalCooldown * Math.pow(0.9, gameState.lubeLevel);
+                }
+                
+                // Apply permanent cooldown reduction (-0.3% per level gained)
+                finalCooldown = finalCooldown * bonuses.cooldown;
+                
+                // Apply minimum cooldown cap (same as above)
+                if (this.originalBaseCooldown > 0) {
+                    const minCooldown = this.originalBaseCooldown * 0.1;
+                    finalCooldown = Math.max(finalCooldown, minCooldown);
+                }
+                
+                // Calculate speed multiplier: original cooldown / final cooldown
+                // This represents how much faster the weapon fires
+                const speedMultiplier = this.baseCooldown / finalCooldown;
+                
+                // Base rotation speed: 1200 degrees per second
+                // Scale by speed multiplier (faster cooldown = faster rotation)
+                const baseRotationSpeed = 1200;
+                const rotationSpeed = baseRotationSpeed * speedMultiplier;
+                
+                const fullRotationTime = (360 / rotationSpeed) * 1000; // Time for full rotation in ms
                 const strikeDurationRotating = Math.max(strikeDuration, fullRotationTime);
                 
                 const rotatingStrike = new Strike(
@@ -3178,6 +3204,7 @@ class Weapon {
                 let highestHealth = -1;
                 let closestDistance = Infinity;
                 
+                // Check regular enemies
                 for (const enemy of gameState.enemies) {
                     const dx = enemy.x - player.x;
                     const dy = enemy.y - player.y;
@@ -3189,6 +3216,21 @@ class Weapon {
                         highestHealth = enemy.health;
                         closestDistance = distance;
                         targetEnemy = enemy;
+                    }
+                }
+                
+                // Also check boss if it exists and is not invincible
+                if (gameState.boss && !gameState.boss.invincible && !gameState.boss.isDying) {
+                    const dx = gameState.boss.x - player.x;
+                    const dy = gameState.boss.y - player.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    // Prioritize highest health, then closest if health is equal
+                    if (gameState.boss.health > highestHealth || 
+                        (gameState.boss.health === highestHealth && distance < closestDistance)) {
+                        highestHealth = gameState.boss.health;
+                        closestDistance = distance;
+                        targetEnemy = gameState.boss;
                     }
                 }
                 
@@ -3270,6 +3312,7 @@ class Weapon {
         let nearestEnemy = null;
         let nearestDistance = Infinity;
 
+        // Check regular enemies
         for (const enemy of gameState.enemies) {
             const dx = enemy.x - player.x;
             const dy = enemy.y - player.y;
@@ -3278,6 +3321,18 @@ class Weapon {
             if (distance < nearestDistance) {
                 nearestDistance = distance;
                 nearestEnemy = enemy;
+            }
+        }
+        
+        // Also check boss if it exists and is not invincible
+        if (gameState.boss && !gameState.boss.invincible && !gameState.boss.isDying) {
+            const dx = gameState.boss.x - player.x;
+            const dy = gameState.boss.y - player.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearestEnemy = gameState.boss;
             }
         }
 
@@ -3305,6 +3360,8 @@ class Weapon {
             } else if (this.type === 'buttplug') {
                 // Normal behavior: single projectile (levels 1-4)
                 const projectileType = 'buttplug';
+                // Level 5 gets 5 seconds, others get 2 seconds
+                const lifetime = this.level >= 5 ? 5000 : 2000;
                 const projectile = new Projectile(
                     player.x,
                     player.y,
@@ -3315,7 +3372,7 @@ class Weapon {
                     false, // No piercing
                     1.0,   // Normal size
                     1.0,   // Full opacity
-                    2000,  // Lifetime
+                    lifetime,  // Lifetime: 2 seconds (levels 1-4), 5 seconds (level 5)
                     this.level // Weapon level for enemy projectile absorption
                 );
                 gameState.projectiles.push(projectile);
