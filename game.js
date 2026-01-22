@@ -2819,8 +2819,13 @@ class Projectile {
         
         // For buttplug: track how many enemy projectiles can be absorbed
         if (this.type === 'buttplug') {
-            // Level 1 = 1, Level 5 = 3 (linear scaling)
-            this.maxEnemyProjectiles = Math.floor(1 + (weaponLevel - 1) * 0.5);
+            // Level 1-4: linear scaling (1, 1.5, 2, 2.5 -> floor = 1, 1, 2, 2)
+            // Level 5: can cancel out 8 projectiles
+            if (weaponLevel >= 5) {
+                this.maxEnemyProjectiles = 8;
+            } else {
+                this.maxEnemyProjectiles = Math.floor(1 + (weaponLevel - 1) * 0.5);
+            }
             this.absorbedEnemyProjectiles = 0; // Track how many have been absorbed
         }
     }
@@ -3233,7 +3238,7 @@ class Weapon {
             this.damage = Math.floor(120 * bonuses.damage); // Increased for highest DPS (melee risk)
             this.projectileSpeed = 0; // Not used for strikes
             this.count = 1;
-            this.strikeRange = 100; // Distance from player
+            this.strikeRange = 70; // Distance from player (reduced by 30% from 100)
             this.baseStrikeDuration = 500; // 0.5 seconds base duration
         } else if (type === 'buttplug') {
             this.name = 'Buttplug';
@@ -3250,7 +3255,7 @@ class Weapon {
             this.projectileSpeed = 0; // Not used for aura
             this.count = 1;
             this.auraRadius = 40; // Aura radius (halved from 80)
-            this.damageInterval = 150; // Damage every 150ms
+            this.damageInterval = 300; // Damage every 300ms (doubled from 150ms)
         } else if (type === 'ovulation') {
             this.name = 'Ovulation';
             this.baseCooldown = 7000; // 7 seconds
@@ -3605,7 +3610,7 @@ class Weapon {
             
             // Buttplug special behavior at level 5
             if (this.type === 'buttplug' && this.level >= 5) {
-                // Level 5: 1 large piercing projectile with 5x damage (one per cooldown, no bursts)
+                // Level 5: 1 large projectile with 5x damage that can cancel 8 enemy projectiles (no piercing)
                 const projectileType = 'buttplug';
                 // Get attack size bonus for size multiplier
                 const bonuses = PermanentStats.getBonuses();
@@ -3616,11 +3621,11 @@ class Weapon {
                     this.projectileSpeed * 0.3, // 30% speed
                     this.damage * 5, // 5x damage
                     projectileType,
-                    true, // Pierce through enemies
+                    false, // No piercing - stops after hitting first enemy
                     5.0 * bonuses.attackSize,  // 500% size (5x) * attack size bonus
                     1.0,  // Full opacity
-                    2000, // Lifetime
-                    this.level, // Weapon level for enemy projectile absorption
+                    5000, // Lifetime (5 seconds)
+                    this.level, // Weapon level for enemy projectile absorption (level 5 = 8 projectiles)
                     this.type // Pass weapon type for damage tracking
                 );
                 gameState.projectiles.push(projectile);
