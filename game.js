@@ -1161,9 +1161,12 @@ class Boss {
                 // Remove one tick after dealing damage
                 this.flamedTicks = Math.max(0, this.flamedTicks - 1);
                 
-                // Spread effect: 30% chance per tick to spread to nearby enemies (within 20 pixels)
-                if (Math.random() < 0.3) {
-                    const spreadRange = 20;
+                // Spread effect: 30% chance per tick (55% at level 5) to spread to nearby enemies (within 70 pixels, 85 at level 5)
+                const hitachiWeapon = gameState.weapons.find(w => w.type === 'hitachi');
+                const hitachiLevel = hitachiWeapon ? hitachiWeapon.level : 1;
+                const spreadChance = hitachiLevel >= 5 ? 0.55 : 0.3; // 55% at level 5, 30% otherwise
+                const spreadRange = hitachiLevel >= 5 ? 85 : 70; // 85 pixels at level 5, 70 pixels otherwise
+                if (Math.random() < spreadChance) {
                     // Check regular enemies
                     for (const enemy of gameState.enemies) {
                         if (enemy === this || enemy.isDying) continue;
@@ -1968,9 +1971,12 @@ class Enemy {
                 // Remove one tick after dealing damage
                 this.flamedTicks = Math.max(0, this.flamedTicks - 1);
                 
-                // Spread effect: 30% chance per tick to spread to nearby enemies (within 20 pixels)
-                if (Math.random() < 0.3) {
-                    const spreadRange = 20;
+                // Spread effect: 30% chance per tick (55% at level 5) to spread to nearby enemies (within 70 pixels, 85 at level 5)
+                const hitachiWeapon = gameState.weapons.find(w => w.type === 'hitachi');
+                const hitachiLevel = hitachiWeapon ? hitachiWeapon.level : 1;
+                const spreadChance = hitachiLevel >= 5 ? 0.55 : 0.3; // 55% at level 5, 30% otherwise
+                const spreadRange = hitachiLevel >= 5 ? 85 : 70; // 85 pixels at level 5, 70 pixels otherwise
+                if (Math.random() < spreadChance) {
                     // Check other enemies
                     for (const enemy of gameState.enemies) {
                         if (enemy === this || enemy.isDying) continue;
