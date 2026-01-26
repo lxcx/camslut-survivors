@@ -1153,7 +1153,10 @@ class Boss {
         if (this.flamedTicks > 0 && !this.isDying) {
             // Deal damage every 200ms per tick
             if (now - this.lastFlameTickTime >= this.flameDamageInterval) {
-                const damagePerTick = 3;
+                // Get hitachi weapon to scale damage with weapon damage and bonuses
+                const hitachiWeapon = gameState.weapons.find(w => w.type === 'hitachi');
+                // Scale flamed damage: 60% of weapon damage (base: 3 damage per tick from 5 base weapon damage)
+                const damagePerTick = hitachiWeapon ? Math.floor(hitachiWeapon.damage * 0.6) : 3;
                 const totalDamage = damagePerTick * this.flamedTicks;
                 // Use takeDamage to respect invincibility and damage caps
                 this.takeDamage(totalDamage, 'flamed');
@@ -1162,9 +1165,10 @@ class Boss {
                 this.flamedTicks = Math.max(0, this.flamedTicks - 1);
                 
                 // Spread effect: 30% chance per tick (55% at level 5) to spread to nearby enemies (within 70 pixels, 85 at level 5)
-                const hitachiWeapon = gameState.weapons.find(w => w.type === 'hitachi');
                 const hitachiLevel = hitachiWeapon ? hitachiWeapon.level : 1;
-                const spreadChance = hitachiLevel >= 5 ? 0.55 : 0.3; // 55% at level 5, 30% otherwise
+                const baseSpreadChance = hitachiLevel >= 5 ? 0.55 : 0.3; // 55% at level 5, 30% otherwise
+                // Add 0.2 per permanent level to spread chance (capped at 75%)
+                const spreadChance = Math.min(0.75, baseSpreadChance + (PermanentStats.totalLevelsGained * 0.2));
                 const spreadRange = hitachiLevel >= 5 ? 85 : 70; // 85 pixels at level 5, 70 pixels otherwise
                 if (Math.random() < spreadChance) {
                     // Check regular enemies
@@ -1690,8 +1694,9 @@ class EnemyProjectile {
             }
         }
         
-        // Destroy projectile if it's been in ovulation pools for 5 seconds total
-        if (this.ovulationPoolTime >= 5000) {
+        // Destroy projectile if it's been in ovulation pools for 5 seconds total (reduced by 0.2% per permanent level)
+        const maxPoolTime = 5000 * (1 - PermanentStats.totalLevelsGained * 0.002);
+        if (this.ovulationPoolTime >= maxPoolTime) {
             return false; // Remove projectile
         }
         
@@ -1960,7 +1965,10 @@ class Enemy {
         if (this.flamedTicks > 0) {
             // Deal damage every 200ms per tick
             if (now - this.lastFlameTickTime >= this.flameDamageInterval) {
-                const damagePerTick = 3;
+                // Get hitachi weapon to scale damage with weapon damage and bonuses
+                const hitachiWeapon = gameState.weapons.find(w => w.type === 'hitachi');
+                // Scale flamed damage: 60% of weapon damage (base: 3 damage per tick from 5 base weapon damage)
+                const damagePerTick = hitachiWeapon ? Math.floor(hitachiWeapon.damage * 0.6) : 3;
                 const totalDamage = damagePerTick * this.flamedTicks;
                 const killed = this.takeDamage(totalDamage);
                 if (killed) {
@@ -1972,9 +1980,10 @@ class Enemy {
                 this.flamedTicks = Math.max(0, this.flamedTicks - 1);
                 
                 // Spread effect: 30% chance per tick (55% at level 5) to spread to nearby enemies (within 70 pixels, 85 at level 5)
-                const hitachiWeapon = gameState.weapons.find(w => w.type === 'hitachi');
                 const hitachiLevel = hitachiWeapon ? hitachiWeapon.level : 1;
-                const spreadChance = hitachiLevel >= 5 ? 0.55 : 0.3; // 55% at level 5, 30% otherwise
+                const baseSpreadChance = hitachiLevel >= 5 ? 0.55 : 0.3; // 55% at level 5, 30% otherwise
+                // Add 0.2 per permanent level to spread chance (capped at 75%)
+                const spreadChance = Math.min(0.75, baseSpreadChance + (PermanentStats.totalLevelsGained * 0.2));
                 const spreadRange = hitachiLevel >= 5 ? 85 : 70; // 85 pixels at level 5, 70 pixels otherwise
                 if (Math.random() < spreadChance) {
                     // Check other enemies
@@ -2627,7 +2636,9 @@ class CollarAura {
         this.lastUpdateTime = null; // Track last update time for rotation
         // Base sprite size is radius * 2 * 1.3 (30% larger), then increase 200% (3x total), then increase 10% per level
         const baseSize = radius * 2 * 1.3 * 3; // 200% increase (3x original)
-        this.baseAuraSize = baseSize * (1 + (level - 1) * 0.1);
+        // Increase total size by 0.1% per permanent level
+        const permanentSizeBonus = 1 + (PermanentStats.totalLevelsGained * 0.001);
+        this.baseAuraSize = baseSize * (1 + (level - 1) * 0.1) * permanentSizeBonus;
         this.auraSize = this.baseAuraSize; // Current size (will pulse at level 5)
         this.isLevel5 = level >= 5; // Track if this is level 5+ aura
         this.pulsePhase = 0; // Phase offset for pulse (0 or Math.PI for opposite ends)
@@ -2677,12 +2688,15 @@ class CollarAura {
                 const distance = Math.sqrt(dx * dx + dy * dy);
                 
                 if (distance < hitboxRadius + enemy.radius) {
-                    // Calculate damage: 30% reduction if enemy is in outer 30% of aura
+                    // Calculate damage: 30% reduction if enemy is in outer 30% of aura (reduces to 27% at 100 permanent levels)
                     // Outer 30% means distance > 70% of aura radius
+                    // Damage reduction decreases by 0.03% per permanent level (30% -> 27% at 100 levels)
+                    const damageReductionThreshold = 0.7; // Still outer 30% of aura
+                    const damageMultiplier = 0.7 + (PermanentStats.totalLevelsGained * 0.0003); // 0.7 at 0 levels, 0.73 at 100 levels (27% reduction)
                     let damageToDeal = this.damage;
                     const effectiveDistance = distance - enemy.radius; // Distance from player to enemy edge
-                    if (effectiveDistance > hitboxRadius * 0.7) {
-                        damageToDeal = this.damage * 0.7; // 30% reduction
+                    if (effectiveDistance > hitboxRadius * damageReductionThreshold) {
+                        damageToDeal = this.damage * damageMultiplier; // 30% reduction at base, decreasing with permanent levels
                     }
                     
                     const killed = enemy.takeDamage(damageToDeal);
@@ -2834,10 +2848,12 @@ class DamagePool {
             return false;
         }
 
-        // Level 5: expand radius at 6% per second (20% increase from 5%)
+        // Level 5: expand radius at 6% per second (20% increase from 5%), scaled by 1% per permanent level
         if (this.isLevel5) {
             const ageInSeconds = age / 1000;
-            const expansionRate = 0.06; // 6% per second (20% increase from 5%)
+            const baseExpansionRate = 0.06; // 6% per second (20% increase from 5%)
+            // Scale by 1% per permanent level
+            const expansionRate = baseExpansionRate * (1 + PermanentStats.totalLevelsGained * 0.01);
             this.radius = this.baseRadius * (1 + ageInSeconds * expansionRate);
         }
 
@@ -2977,11 +2993,15 @@ class Projectile {
         if (this.type === 'buttplug') {
             // Level 1-4: linear scaling (1, 1.5, 2, 2.5 -> floor = 1, 1, 2, 2)
             // Level 5: can cancel out 5 projectiles (reduced from 8)
+            let baseMaxProjectiles;
             if (weaponLevel >= 5) {
-                this.maxEnemyProjectiles = 5;
+                baseMaxProjectiles = 5;
             } else {
-                this.maxEnemyProjectiles = Math.floor(1 + (weaponLevel - 1) * 0.5);
+                baseMaxProjectiles = Math.floor(1 + (weaponLevel - 1) * 0.5);
             }
+            // Add permanent level bonus: +1 per 50 permanent levels (0.02 per level)
+            const permanentBonus = PermanentStats.totalLevelsGained * 0.02;
+            this.maxEnemyProjectiles = Math.floor(baseMaxProjectiles + permanentBonus);
             this.absorbedEnemyProjectiles = 0; // Track how many have been absorbed
         }
     }
@@ -3033,7 +3053,9 @@ class Projectile {
                 
                 // Apply flamed effect if Hitachi projectile
                 if (this.type === 'hitachi') {
-                    enemy.flamedTicks += 3; // Add three ticks
+                    // Base 3 ticks + 0.05 per permanent level
+                    const fireTicks = 3 + (PermanentStats.totalLevelsGained * 0.05);
+                    enemy.flamedTicks += Math.floor(fireTicks);
                     if (enemy.lastFlameTickTime === 0) {
                         enemy.lastFlameTickTime = Date.now(); // Initialize tick time
                     }
@@ -3077,7 +3099,9 @@ class Projectile {
                 
                 // Apply flamed effect if Hitachi projectile
                 if (this.type === 'hitachi') {
-                    gameState.boss.flamedTicks += 3; // Add three ticks
+                    // Base 3 ticks + 0.05 per permanent level
+                    const fireTicks = 3 + (PermanentStats.totalLevelsGained * 0.05);
+                    gameState.boss.flamedTicks += Math.floor(fireTicks);
                     if (gameState.boss.lastFlameTickTime === 0) {
                         gameState.boss.lastFlameTickTime = Date.now(); // Initialize tick time
                     }
